@@ -114,6 +114,8 @@ Route::prefix('vendors')->name('vendors.')->group(function () {
         Route::get('receive-payment/{uuid}/edit', [CustomerController::class, 'editPayment'])->name('receive-payment.edit');
         Route::put('receive-payment/{uuid}/update', [CustomerController::class, 'updatePayment'])->name('receive-payment.update');
         Route::delete('receive-payment/{uuid}', [CustomerController::class, 'deletePayment'])->name('receive-payment.delete');
+
+        
     });
 
     // ==================== CUSTOMER BILLS ROUTES ====================
