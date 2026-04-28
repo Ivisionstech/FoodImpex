@@ -35,7 +35,6 @@
         @php
             $isAdmin = auth()->user()->role == 'admin';
             
-            // Merge all transactions
             $allTransactions = collect([]);
             
             foreach ($payments as $payment) {
@@ -48,7 +47,6 @@
                     'uuid' => $payment->uuid,
                     'id' => $payment->id,
                     'date' => $payment->date,
-                    'description' => $description,
                     'reference' => $payment->vendor->company_name ?? 'Unknown Vendor',
                     'amount' => $payment->amount,
                     'type' => 'payment',
@@ -57,7 +55,6 @@
                     'method' => ucfirst($payment->send_via ?? 'Cash'),
                     'approval_status' => $payment->approval_status ?? 'pending',
                     'is_payment' => true,
-                    'original' => $payment
                 ]);
             }
             
@@ -66,85 +63,28 @@
                     'uuid' => $entry->uuid ?? ('entry_'.$entry->id),
                     'id' => $entry->id,
                     'date' => $entry->date ?? $entry->transaction_date ?? now(),
-                    'description' => $entry->description ?? 'General Entry',
-                    'reference' => $entry->reference ?? 'System',
+                    'reference' => $entry->reference ?? ($entry->description ? \Str::limit($entry->description, 30) : 'System'),
                     'amount' => $entry->amount ?? 0,
                     'type' => $entry->type ?? 'general',
                     'type_badge' => $entry->type_badge ?? 'info',
                     'type_label' => $entry->type_label ?? 'General Entry',
                     'method' => $entry->method ?? 'Transfer',
-                    'approval_status' => 'approved', // General entries are auto-approved
+                    'approval_status' => 'approved',
                     'is_payment' => false,
                 ]);
             }
             
             $allTransactions = $allTransactions->sortByDesc('date');
+            
+            // Pagination
+            $currentPage = request()->get('page', 1);
+            $perPage = 15;
+            $currentItems = $allTransactions->slice(($currentPage - 1) * $perPage, $perPage);
+            $totalItems = $allTransactions->count();
+            $lastPage = ceil($totalItems / $perPage);
         @endphp
 
-        <!-- Summary Cards -->
-        <div class="row g-4 mb-4">
-            <div class="col-md-3">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="mb-1 text-muted">Total Payments</h6>
-                                <h3 class="mb-0 text-primary">PKR {{ number_format($payments->sum('amount'), 2) }}</h3>
-                            </div>
-                            <div class="rounded-circle p-3" style="background-color: rgba(105, 108, 255, 0.1);">
-                                <i class="bx bx-money fs-2 text-primary"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="mb-1 text-muted">Total Entries</h6>
-                                <h3 class="mb-0 text-info">PKR {{ number_format($generalEntries->sum('amount'), 2) }}</h3>
-                            </div>
-                            <div class="rounded-circle p-3" style="background-color: rgba(13, 202, 240, 0.1);">
-                                <i class="bx bx-transfer-alt fs-2 text-info"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="mb-1 text-muted">Total Transactions</h6>
-                                <h3 class="mb-0 text-success">{{ $payments->count() + $generalEntries->count() }}</h3>
-                            </div>
-                            <div class="rounded-circle p-3" style="background-color: rgba(40, 167, 69, 0.1);">
-                                <i class="bx bx-trending-up fs-2 text-success"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card h-100 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h6 class="mb-1 text-muted">Grand Total</h6>
-                                <h3 class="mb-0 text-warning">PKR {{ number_format($payments->sum('amount') + $generalEntries->sum('amount'), 2) }}</h3>
-                            </div>
-                            <div class="rounded-circle p-3" style="background-color: rgba(255, 193, 7, 0.1);">
-                                <i class="bx bx-wallet fs-2 text-warning"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
+       
         {{-- Filter Section --}}
         <div class="card mb-4">
             <div class="card-body">
@@ -189,150 +129,218 @@
                     <i class="bx bx-list-ul me-2 text-primary"></i>
                     All Transactions
                 </h5>
+                <div class="text-muted small">
+                    Total: {{ $totalItems }} transactions
+                </div>
             </div>
 
             {{-- CSS Grid Layout for Transactions --}}
-            <div class="p-3">
-                {{-- Header Row --}}
-                <div class="transaction-grid header-row d-none d-md-grid mb-2 pb-2 border-bottom">
-                    <div class="fw-bold text-muted">Date</div>
-                    <div class="fw-bold text-muted">Description</div>
-                    <div class="fw-bold text-muted">Reference</div>
-                    <div class="fw-bold text-muted">Amount</div>
-                    <div class="fw-bold text-muted">Type</div>
-                    <div class="fw-bold text-muted">Method</div>
-                    <div class="fw-bold text-muted">Status</div>
-                    <div class="fw-bold text-muted text-center">Actions</div>
-                </div>
+            <div class="table-responsive" style="overflow-x: auto;">
+                <div class="p-3" style="min-width: 900px;">
+                    {{-- Header Row --}}
+                    <div class="transaction-grid header-row d-none d-md-grid mb-2 pb-2 border-bottom">
+                        <div class="fw-bold text-muted">Date</div>
+                        <div class="fw-bold text-muted">Reference</div>
+                        <div class="fw-bold text-muted">Amount</div>
+                        <div class="fw-bold text-muted">Type</div>
+                        <div class="fw-bold text-muted">Method</div>
+                        <div class="fw-bold text-muted">Status</div>
+                        <div class="fw-bold text-muted text-center">Actions</div>
+                    </div>
 
-                {{-- Transaction Rows --}}
-                @forelse ($allTransactions as $transaction)
-                    <div class="transaction-grid transaction-row mb-3 p-3 rounded-3 border bg-white shadow-sm" id="transaction-row-{{ $transaction['uuid'] }}">
-                        <div>
-                            <div class="d-md-none fw-bold text-muted small">Date</div>
-                            <div class="fw-semibold">{{ \Carbon\Carbon::parse($transaction['date'])->format('d-M-Y') }}</div>
-                            <div class="small text-muted">{{ \Carbon\Carbon::parse($transaction['date'])->format('h:i A') }}</div>
-                        </div>
-                        
-                        <div>
-                            <div class="d-md-none fw-bold text-muted small">Description</div>
-                            <span class="fw-semibold">{{ \Str::limit($transaction['description'], 40) }}</span>
-                        </div>
-                        
-                        <div>
-                            <div class="d-md-none fw-bold text-muted small">Reference</div>
-                            <span class="badge bg-label-secondary">{{ $transaction['reference'] }}</span>
-                        </div>
-                        
-                        <div>
-                            <div class="d-md-none fw-bold text-muted small">Amount</div>
-                            <span class="fw-bold {{ $transaction['is_payment'] ? 'text-success' : 'text-primary' }}">
-                                PKR {{ number_format($transaction['amount'], 2) }}
-                            </span>
-                        </div>
-                        
-                        <div>
-                            <div class="d-md-none fw-bold text-muted small">Type</div>
-                            <span class="badge rounded-pill" style="background-color: rgba({{ $transaction['type_badge'] == 'success' ? '40, 167, 69' : ($transaction['type_badge'] == 'info' ? '13, 202, 240' : '105, 108, 255') }}, 0.1) !important; color: {{ $transaction['type_badge'] == 'success' ? '#28a745' : ($transaction['type_badge'] == 'info' ? '#0dcaf0' : '#696cff') }} !important; padding: 6px 12px;">
-                                {{ $transaction['type_label'] }}
-                            </span>
-                        </div>
-                        
-                        <div>
-                            <div class="d-md-none fw-bold text-muted small">Method</div>
-                            <span class="badge bg-label-secondary rounded-pill">
-                                <i class="bx bx-{{ $transaction['is_payment'] ? 'bank' : 'transfer' }} me-1"></i>
-                                {{ $transaction['method'] }}
-                            </span>
-                        </div>
-                        
-                        <div>
-                            <div class="d-md-none fw-bold text-muted small">Status</div>
-                            @if($transaction['approval_status'] == 'approved')
-                                <span class="badge bg-success" style="background-color: #28a745 !important; padding: 6px 12px; border-radius: 20px;">
-                                    <i class="bx bx-check-circle me-1"></i> Approved
+                    {{-- Transaction Rows --}}
+                    @forelse ($currentItems as $transaction)
+                        <div class="transaction-grid transaction-row mb-3 p-3 rounded-3 border bg-white shadow-sm" id="transaction-row-{{ $transaction['uuid'] }}">
+                            {{-- Date Column --}}
+                            <div>
+                                <div class="d-md-none fw-bold text-muted small">Date</div>
+                                <div class="fw-semibold">{{ \Carbon\Carbon::parse($transaction['date'])->format('d-M-Y') }}</div>
+                                <div class="small text-muted">{{ \Carbon\Carbon::parse($transaction['date'])->format('h:i A') }}</div>
+                            </div>
+                            
+                            {{-- Reference Column --}}
+                            <div>
+                                <div class="d-md-none fw-bold text-muted small">Reference</div>
+                                <span class="badge bg-label-secondary" style="white-space: normal; word-break: break-word; display: inline-block; max-width: 100%;">
+                                    {{ \Str::limit($transaction['reference'], 35) }}
                                 </span>
-                            @else
-                                @if($isAdmin && $transaction['is_payment'])
-                                    <button type="button" 
-                                        class="btn btn-sm approve-payment-btn"
-                                        style="background-color: #ffc107 !important; color: #000 !important; padding: 6px 12px; border-radius: 20px; border: none; font-size: 0.75rem;"
-                                        data-payment-uuid="{{ $transaction['uuid'] }}"
-                                        data-payment-id="{{ $transaction['id'] }}">
-                                        <i class="bx bx-time me-1"></i> Pending (Click)
-                                    </button>
-                                @else
-                                    <span class="badge bg-warning" style="background-color: #ffc107 !important; color: #000 !important; padding: 6px 12px; border-radius: 20px;">
-                                        <i class="bx bx-time me-1"></i> Pending
+                            </div>
+                            
+                            {{-- Amount Column --}}
+                            <div>
+                                <div class="d-md-none fw-bold text-muted small">Amount</div>
+                                <span class="fw-bold {{ $transaction['is_payment'] ? 'text-success' : 'text-primary' }}">
+                                    PKR {{ number_format($transaction['amount'], 2) }}
+                                </span>
+                            </div>
+                            
+                            {{-- Type Column --}}
+                            <div>
+                                <div class="d-md-none fw-bold text-muted small">Type</div>
+                                <span class="badge rounded-pill" style="background-color: rgba({{ $transaction['type_badge'] == 'success' ? '40, 167, 69' : ($transaction['type_badge'] == 'info' ? '13, 202, 240' : '105, 108, 255') }}, 0.1) !important; color: {{ $transaction['type_badge'] == 'success' ? '#28a745' : ($transaction['type_badge'] == 'info' ? '#0dcaf0' : '#696cff') }} !important; padding: 6px 12px;">
+                                    {{ $transaction['type_label'] }}
+                                </span>
+                            </div>
+                            
+                            {{-- Method Column --}}
+                            <div>
+                                <div class="d-md-none fw-bold text-muted small">Method</div>
+                                <span class="badge bg-label-secondary rounded-pill">
+                                    <i class="bx bx-{{ $transaction['is_payment'] ? 'bank' : 'transfer' }} me-1"></i>
+                                    {{ $transaction['method'] }}
+                                </span>
+                            </div>
+                            
+                            {{-- Status Column --}}
+                            <div>
+                                <div class="d-md-none fw-bold text-muted small">Status</div>
+                                @if($transaction['approval_status'] == 'approved')
+                                    <span class="badge bg-success" style="background-color: #28a745 !important; padding: 6px 12px; border-radius: 20px;">
+                                        <i class="bx bx-check-circle me-1"></i> Approved
                                     </span>
-                                @endif
-                            @endif
-                        </div>
-                        
-                        <div class="text-center">
-                            <div class="d-md-none fw-bold text-muted small">Actions</div>
-                            <div class="dropdown">
-                                <button type="button" class="btn btn-sm btn-icon rounded-circle text-muted" data-bs-toggle="dropdown">
-                                    <i class="bx bx-dots-vertical-rounded fs-5"></i>
-                                </button>
-                                <div class="dropdown-menu shadow-sm border-0">
-                                    @if($transaction['is_payment'])
-                                        <a class="dropdown-item py-2" href="{{ route('vendors.payments.show', $transaction['uuid']) }}">
-                                            <i class="bx bx-show-alt me-2 text-info"></i> View Details
-                                        </a>
-                                        <a class="dropdown-item py-2" href="{{ route('vendors.payments.edit', $transaction['uuid']) }}">
-                                            <i class="bx bx-edit-alt me-2 text-primary"></i> Edit Payment
-                                        </a>
-                                        @if($isAdmin && $transaction['approval_status'] == 'pending')
-                                            <div class="dropdown-divider"></div>
-                                            <button type="button" class="dropdown-item py-2 text-success approve-payment-btn" 
-                                                    data-payment-uuid="{{ $transaction['uuid'] }}" 
-                                                    data-payment-id="{{ $transaction['id'] }}">
-                                                <i class="bx bx-check-circle me-2"></i> Approve Payment
-                                            </button>
-                                        @endif
-                                        @if($isAdmin)
-                                            <div class="dropdown-divider"></div>
-                                            <form action="{{ route('vendors.payments.delete', $transaction['uuid']) }}" method="POST" 
-                                                  onsubmit="return confirm('Are you sure? This will refund the amount.')">
-                                                @csrf
-                                                <button type="submit" class="dropdown-item py-2 text-danger">
-                                                    <i class="bx bx-trash me-2"></i> Delete Payment
-                                                </button>
-                                            </form>
-                                        @endif
+                                @else
+                                    @if($isAdmin && $transaction['is_payment'])
+                                        <button type="button" 
+                                            class="btn btn-sm approve-payment-btn"
+                                            style="background-color: #ffc107 !important; color: #000 !important; padding: 6px 12px; border-radius: 20px; border: none; font-size: 0.75rem;"
+                                            data-payment-uuid="{{ $transaction['uuid'] }}"
+                                            data-payment-id="{{ $transaction['id'] }}">
+                                            <i class="bx bx-time me-1"></i> Pending (Click)
+                                        </button>
                                     @else
-                                        <a class="dropdown-item py-2" href="#" onclick="viewEntry('{{ $transaction['uuid'] }}', {{ $transaction['id'] }})">
-                                            <i class="bx bx-show-alt me-2 text-info"></i> View Details
-                                        </a>
-                                        <a class="dropdown-item py-2" href="#" onclick="printEntry('{{ $transaction['uuid'] }}')">
-                                            <i class="bx bx-printer me-2 text-secondary"></i> Print
-                                        </a>
+                                        <span class="badge bg-warning" style="background-color: #ffc107 !important; color: #000 !important; padding: 6px 12px; border-radius: 20px;">
+                                            <i class="bx bx-time me-1"></i> Pending
+                                        </span>
                                     @endif
+                                @endif
+                            </div>
+                            
+                            {{-- Actions Column --}}
+                            <div class="text-center">
+                                <div class="d-md-none fw-bold text-muted small">Actions</div>
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-sm btn-icon rounded-circle text-muted" data-bs-toggle="dropdown">
+                                        <i class="bx bx-dots-vertical-rounded fs-5"></i>
+                                    </button>
+                                    <div class="dropdown-menu shadow-sm border-0">
+                                        @if($transaction['is_payment'])
+                                            <a class="dropdown-item py-2" href="{{ route('vendors.payments.show', $transaction['uuid']) }}">
+                                                <i class="bx bx-show-alt me-2 text-info"></i> View Details
+                                            </a>
+                                            <a class="dropdown-item py-2" href="{{ route('vendors.payments.edit', $transaction['uuid']) }}">
+                                                <i class="bx bx-edit-alt me-2 text-primary"></i> Edit Payment
+                                            </a>
+                                            @if($isAdmin && $transaction['approval_status'] == 'pending')
+                                                <div class="dropdown-divider"></div>
+                                                <button type="button" class="dropdown-item py-2 text-success approve-payment-btn" 
+                                                        data-payment-uuid="{{ $transaction['uuid'] }}" 
+                                                        data-payment-id="{{ $transaction['id'] }}">
+                                                    <i class="bx bx-check-circle me-2"></i> Approve Payment
+                                                </button>
+                                            @endif
+                                            @if($isAdmin)
+                                                <div class="dropdown-divider"></div>
+                                                <form action="{{ route('vendors.payments.delete', $transaction['uuid']) }}" method="POST" 
+                                                      onsubmit="return confirm('Are you sure? This will refund the amount.')">
+                                                    @csrf
+                                                    <button type="submit" class="dropdown-item py-2 text-danger">
+                                                        <i class="bx bx-trash me-2"></i> Delete Payment
+                                                    </button>
+                                                </form>
+                                            @endif
+                                        @else
+                                            <a class="dropdown-item py-2" href="#" onclick="viewEntry('{{ $transaction['uuid'] }}', {{ $transaction['id'] }})">
+                                                <i class="bx bx-show-alt me-2 text-info"></i> View Details
+                                            </a>
+                                            <a class="dropdown-item py-2" href="#" onclick="printEntry('{{ $transaction['uuid'] }}')">
+                                                <i class="bx bx-printer me-2 text-secondary"></i> Print
+                                            </a>
+                                        @endif
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                @empty
-                    <div class="text-center py-5">
-                        <i class="bx bx-receipt fs-1 mb-2 d-block text-muted"></i>
-                        <div class="text-muted">No transactions found.</div>
-                        @if(request('from_date') || request('to_date') || request('type'))
-                            <a href="{{ route(Route::currentRouteName()) }}" class="btn btn-primary mt-3">
-                                <i class="bx bx-refresh me-1"></i> Clear Filters
-                            </a>
-                        @endif
-                    </div>
-                @endforelse
-            </div>
-
-            <div class="card-footer bg-transparent">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div class="text-muted small">
-                        Showing {{ $allTransactions->count() }} transactions
-                    </div>
+                    @empty
+                        <div class="text-center py-5">
+                            <i class="bx bx-receipt fs-1 mb-2 d-block text-muted"></i>
+                            <div class="text-muted">No transactions found.</div>
+                            @if(request('from_date') || request('to_date') || request('type'))
+                                <a href="{{ route(Route::currentRouteName()) }}" class="btn btn-primary mt-3">
+                                    <i class="bx bx-refresh me-1"></i> Clear Filters
+                                </a>
+                            @endif
+                        </div>
+                    @endforelse
                 </div>
             </div>
+
+            {{-- Pagination --}}
+            @if($totalItems > $perPage)
+                <div class="card-footer bg-transparent">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                        <div class="text-muted small">
+                            Showing {{ ($currentPage - 1) * $perPage + 1 }} to {{ min($currentPage * $perPage, $totalItems) }} of {{ $totalItems }} entries
+                        </div>
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination justify-content-center mb-0">
+                                {{-- Previous Page Link --}}
+                                @if($currentPage > 1)
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ request()->fullUrlWithQuery(['page' => $currentPage - 1]) }}">
+                                            <i class="bx bx-chevron-left me-1"></i> Previous
+                                        </a>
+                                    </li>
+                                @else
+                                    <li class="page-item disabled">
+                                        <span class="page-link"><i class="bx bx-chevron-left me-1"></i> Previous</span>
+                                    </li>
+                                @endif
+
+                                {{-- Page Number Links --}}
+                                @php
+                                    $start = max(1, $currentPage - 2);
+                                    $end = min($lastPage, $currentPage + 2);
+                                    
+                                    if ($start > 1) {
+                                        echo '<li class="page-item"><a class="page-link" href="' . request()->fullUrlWithQuery(['page' => 1]) . '">1</a></li>';
+                                        if ($start > 2) {
+                                            echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                                        }
+                                    }
+                                    
+                                    for ($i = $start; $i <= $end; $i++) {
+                                        if ($i == $currentPage) {
+                                            echo '<li class="page-item active"><span class="page-link">' . $i . '</span></li>';
+                                        } else {
+                                            echo '<li class="page-item"><a class="page-link" href="' . request()->fullUrlWithQuery(['page' => $i]) . '">' . $i . '</a></li>';
+                                        }
+                                    }
+                                    
+                                    if ($end < $lastPage) {
+                                        if ($end < $lastPage - 1) {
+                                            echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                                        }
+                                        echo '<li class="page-item"><a class="page-link" href="' . request()->fullUrlWithQuery(['page' => $lastPage]) . '">' . $lastPage . '</a></li>';
+                                    }
+                                @endphp
+
+                                {{-- Next Page Link --}}
+                                @if($currentPage < $lastPage)
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ request()->fullUrlWithQuery(['page' => $currentPage + 1]) }}">
+                                            Next <i class="bx bx-chevron-right ms-1"></i>
+                                        </a>
+                                    </li>
+                                @else
+                                    <li class="page-item disabled">
+                                        <span class->page-link">Next <i class="bx bx-chevron-right ms-1"></i></span>
+                                    </li>
+                                @endif
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            @endif
         </div>
     </div>
 
@@ -368,29 +376,37 @@
     /* CSS Grid Layout */
     .transaction-grid {
         display: grid;
-        grid-template-columns: 130px 1fr 140px 130px 120px 110px 110px 80px;
+        grid-template-columns: 120px minmax(160px, 1fr) 130px 120px 100px 130px 80px;
         gap: 12px;
         align-items: center;
         width: 100%;
     }
     
+    /* Reference column - allow wrapping */
     .transaction-grid > div:nth-child(2) {
-        overflow: hidden;
+        word-break: break-word;
+        white-space: normal;
+    }
+    
+    /* Amount column - keep on one line */
+    .transaction-grid > div:nth-child(3) {
         white-space: nowrap;
-        text-overflow: ellipsis;
     }
     
     @media (max-width: 1200px) {
         .transaction-grid {
-            grid-template-columns: 120px 1fr 130px 120px 110px 100px 100px 70px;
+            grid-template-columns: 110px minmax(140px, 1fr) 120px 110px 90px 120px 70px;
             gap: 10px;
         }
     }
     
     @media (max-width: 992px) {
         .transaction-grid {
-            grid-template-columns: 110px 1fr 120px 110px 100px 90px 90px 70px;
+            grid-template-columns: 100px 1fr 110px 100px 80px 110px 65px;
             gap: 8px;
+        }
+        .transaction-grid > div:nth-child(2) span {
+            font-size: 0.8rem;
         }
     }
     
@@ -441,7 +457,6 @@
         border: none;
         border-radius: 10px;
         padding: 8px 20px;
-        transition: all 0.2s ease;
     }
     
     .btn-primary:hover {
@@ -465,6 +480,67 @@
         background: transparent;
         padding: 1.25rem 1.5rem;
     }
+    
+    /* Badge styles */
+    .badge.bg-label-secondary {
+        background-color: rgba(108, 117, 125, 0.1) !important;
+        color: #6c757d !important;
+        padding: 6px 12px;
+        border-radius: 20px;
+        display: inline-block;
+        max-width: 100%;
+        word-break: break-word;
+        white-space: normal;
+    }
+    
+    /* Header row styles */
+    .header-row {
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 10px;
+        margin-bottom: 10px;
+    }
+    
+    .header-row .fw-bold {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Pagination Styles */
+    .pagination {
+        gap: 5px;
+        margin-bottom: 0;
+    }
+    
+    .pagination .page-item .page-link {
+        border-radius: 8px !important;
+        color: #696cff;
+        border: none;
+        padding: 8px 14px;
+        transition: all 0.2s ease;
+        background: transparent;
+    }
+    
+    .pagination .page-item.active .page-link {
+        background-color: #696cff;
+        color: white;
+    }
+    
+    .pagination .page-item .page-link:hover {
+        transform: translateY(-2px);
+        background-color: rgba(105, 108, 255, 0.1);
+    }
+    
+    .pagination .page-item.disabled .page-link {
+        color: #a8a8a8;
+        pointer-events: none;
+    }
+    
+    /* Horizontal scroll */
+    .table-responsive {
+        overflow-x: auto;
+        width: 100%;
+    }
 </style>
 
 <script>
@@ -472,7 +548,6 @@ $(document).ready(function() {
     var isAdmin = '{{ auth()->user()->role }}' == 'admin';
     
     if (isAdmin) {
-        // Approve Payment Function
         function approvePayment(uuid, id) {
             Swal.fire({
                 title: 'Approve Payment #' + id + '?',
@@ -510,7 +585,6 @@ $(document).ready(function() {
         });
     }
     
-    // Auto-submit form on filter change
     $('#from_date, #to_date, select[name="type"]').on('change', function() {
         $('#filterForm').submit();
     });
@@ -518,7 +592,6 @@ $(document).ready(function() {
 
 function viewEntry(uuid, id) {
     $('#viewModal').modal('show');
-    
     $('#modalContent').html(`
         <div class="text-center py-4">
             <div class="spinner-border text-primary" role="status">

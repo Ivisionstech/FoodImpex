@@ -140,7 +140,7 @@
                                         style="background-color: #ffc107 !important; color: #000 !important; padding: 6px 12px; border-radius: 20px; border: none; font-size: 0.75rem;"
                                         data-payment-uuid="{{ $payment->uuid }}"
                                         data-payment-id="{{ $payment->id }}">
-                                        <i class="bx bx-time me-1"></i> Pending (Click to Approve)
+                                        <i class="bx bx-time me-1"></i> Pending (Click)
                                     </button>
                                 @else
                                     <span class="badge bg-warning" style="background-color: #ffc107 !important; color: #000 !important; padding: 6px 12px; font-size: 0.75rem; border-radius: 20px;">
