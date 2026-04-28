@@ -214,22 +214,29 @@ Route::delete('customers/bills/delete/{uuid}', [CustomerBillController::class, '
     });
 
     // ==================== GENERAL TRANSACTIONS ROUTES ====================
-    Route::prefix('general-transactions')->name('general-transactions.')->group(function () {
-        Route::get('/', [GeneralTransactionController::class, 'index'])->name('index');
-        Route::get('/entries', [GeneralTransactionController::class, 'generalEntriesList'])->name('entries-list');
-        Route::get('/general-entry', [GeneralTransactionController::class, 'generalEntry'])->name('general-entry');
-        Route::post('/general-entry/store', [GeneralTransactionController::class, 'storeGeneralEntry'])->name('general-entry.store');
-        Route::get('customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorForm'])->name('customer-to-vendor');
-        Route::post('customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorTransfer'])->name('customer-to-vendor.store');
-        Route::get('bank-to-bank', [GeneralTransactionController::class, 'bankToBankForm'])->name('bank-to-bank');
-        Route::post('bank-to-bank', [GeneralTransactionController::class, 'bankToBankTransfer'])->name('bank-to-bank.store');
-        Route::get('bank-withdraw', [GeneralTransactionController::class, 'bankWithdrawForm'])->name('bank-withdraw');
-        Route::post('bank-withdraw', [GeneralTransactionController::class, 'bankWithdraw'])->name('bank-withdraw.store');
-        Route::get('bank-deposit', [GeneralTransactionController::class, 'bankDepositForm'])->name('bank-deposit');
-        Route::post('bank-deposit', [GeneralTransactionController::class, 'bankDeposit'])->name('bank-deposit.store');
-        Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
-    });
-
+   Route::prefix('general-transactions')->name('general-transactions.')->group(function () {
+    Route::get('/', [GeneralTransactionController::class, 'index'])->name('index');
+    Route::get('/entries', [GeneralTransactionController::class, 'generalEntriesList'])->name('entries-list');
+    Route::get('/general-entry', [GeneralTransactionController::class, 'generalEntry'])->name('general-entry');
+    Route::post('/general-entry/store', [GeneralTransactionController::class, 'storeGeneralEntry'])->name('general-entry.store');
+    
+    // Approve General Entry Route (Admin only)
+    Route::post('/approve/{id}', [GeneralTransactionController::class, 'approveEntry'])->name('approve');
+    
+    Route::get('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorForm'])->name('customer-to-vendor');
+    Route::post('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorTransfer'])->name('customer-to-vendor.store');
+    
+    Route::get('/bank-to-bank', [GeneralTransactionController::class, 'bankToBankForm'])->name('bank-to-bank');
+    Route::post('/bank-to-bank', [GeneralTransactionController::class, 'bankToBankTransfer'])->name('bank-to-bank.store');
+    
+    Route::get('/bank-withdraw', [GeneralTransactionController::class, 'bankWithdrawForm'])->name('bank-withdraw');
+    Route::post('/bank-withdraw', [GeneralTransactionController::class, 'bankWithdraw'])->name('bank-withdraw.store');
+    
+    Route::get('/bank-deposit', [GeneralTransactionController::class, 'bankDepositForm'])->name('bank-deposit');
+    Route::post('/bank-deposit', [GeneralTransactionController::class, 'bankDeposit'])->name('bank-deposit.store');
+    
+    Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
+});
     // ==================== ACCESS CONTROL ROUTES ====================
     Route::prefix('access-control')->name('access-control.')->group(function () {
         Route::resource('roles', RoleController::class);

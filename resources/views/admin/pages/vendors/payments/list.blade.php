@@ -37,6 +37,7 @@
             
             $allTransactions = collect([]);
             
+            // Vendor Payments
             foreach ($payments as $payment) {
                 $description = $payment->description ?? 'Payment to Vendor';
                 if (strpos($description, 'Payment to') === false && strpos($description, 'Payment sent') === false) {
@@ -58,6 +59,7 @@
                 ]);
             }
             
+            // General Entries from Daybook
             foreach ($generalEntries as $entry) {
                 $allTransactions->push([
                     'uuid' => $entry->uuid ?? ('entry_'.$entry->id),
@@ -65,11 +67,11 @@
                     'date' => $entry->date ?? $entry->transaction_date ?? now(),
                     'reference' => $entry->reference ?? ($entry->description ? \Str::limit($entry->description, 30) : 'System'),
                     'amount' => $entry->amount ?? 0,
-                    'type' => $entry->type ?? 'general',
-                    'type_badge' => $entry->type_badge ?? 'info',
-                    'type_label' => $entry->type_label ?? 'General Entry',
+                    'type' => 'general',
+                    'type_badge' => 'info',
+                    'type_label' => 'General Entry',
                     'method' => $entry->method ?? 'Transfer',
-                    'approval_status' => 'approved',
+                    'approval_status' => $entry->approval_status ?? 'pending',
                     'is_payment' => false,
                 ]);
             }
@@ -84,7 +86,55 @@
             $lastPage = ceil($totalItems / $perPage);
         @endphp
 
-       
+        {{-- Summary Cards --}}
+        <div class="row g-4 mb-4">
+            <div class="col-md-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1 text-muted">Total Payments</h6>
+                                <h3 class="mb-0 text-primary">PKR {{ number_format($payments->sum('amount'), 2) }}</h3>
+                            </div>
+                            <div class="rounded-circle p-3" style="background-color: rgba(105, 108, 255, 0.1);">
+                                <i class="bx bx-money fs-2 text-primary"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1 text-muted">Total Entries</h6>
+                                <h3 class="mb-0 text-info">PKR {{ number_format($generalEntries->sum('amount'), 2) }}</h3>
+                            </div>
+                            <div class="rounded-circle p-3" style="background-color: rgba(13, 202, 240, 0.1);">
+                                <i class="bx bx-transfer-alt fs-2 text-info"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1 text-muted">Total Transactions</h6>
+                                <h3 class="mb-0 text-success">{{ $payments->count() + $generalEntries->count() }}</h3>
+                            </div>
+                            <div class="rounded-circle p-3" style="background-color: rgba(40, 167, 69, 0.1);">
+                                <i class="bx bx-trending-up fs-2 text-success"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         {{-- Filter Section --}}
         <div class="card mb-4">
             <div class="card-body">
@@ -136,7 +186,7 @@
 
             {{-- CSS Grid Layout for Transactions --}}
             <div class="table-responsive" style="overflow-x: auto;">
-                <div class="p-3" style="min-width: 900px;">
+                <div class="p-3" style="min-width: 1000px;">
                     {{-- Header Row --}}
                     <div class="transaction-grid header-row d-none d-md-grid mb-2 pb-2 border-bottom">
                         <div class="fw-bold text-muted">Date</div>
@@ -199,12 +249,13 @@
                                         <i class="bx bx-check-circle me-1"></i> Approved
                                     </span>
                                 @else
-                                    @if($isAdmin && $transaction['is_payment'])
+                                    @if($isAdmin)
                                         <button type="button" 
-                                            class="btn btn-sm approve-payment-btn"
+                                            class="btn btn-sm approve-transaction-btn"
                                             style="background-color: #ffc107 !important; color: #000 !important; padding: 6px 12px; border-radius: 20px; border: none; font-size: 0.75rem;"
-                                            data-payment-uuid="{{ $transaction['uuid'] }}"
-                                            data-payment-id="{{ $transaction['id'] }}">
+                                            data-transaction-uuid="{{ $transaction['uuid'] }}"
+                                            data-transaction-id="{{ $transaction['id'] }}"
+                                            data-transaction-type="{{ $transaction['is_payment'] ? 'payment' : 'general' }}">
                                             <i class="bx bx-time me-1"></i> Pending (Click)
                                         </button>
                                     @else
@@ -232,9 +283,10 @@
                                             </a>
                                             @if($isAdmin && $transaction['approval_status'] == 'pending')
                                                 <div class="dropdown-divider"></div>
-                                                <button type="button" class="dropdown-item py-2 text-success approve-payment-btn" 
-                                                        data-payment-uuid="{{ $transaction['uuid'] }}" 
-                                                        data-payment-id="{{ $transaction['id'] }}">
+                                                <button type="button" class="dropdown-item py-2 text-success approve-transaction-btn" 
+                                                        data-transaction-uuid="{{ $transaction['uuid'] }}" 
+                                                        data-transaction-id="{{ $transaction['id'] }}"
+                                                        data-transaction-type="payment">
                                                     <i class="bx bx-check-circle me-2"></i> Approve Payment
                                                 </button>
                                             @endif
@@ -255,6 +307,15 @@
                                             <a class="dropdown-item py-2" href="#" onclick="printEntry('{{ $transaction['uuid'] }}')">
                                                 <i class="bx bx-printer me-2 text-secondary"></i> Print
                                             </a>
+                                            @if($isAdmin && $transaction['approval_status'] == 'pending')
+                                                <div class="dropdown-divider"></div>
+                                                <button type="button" class="dropdown-item py-2 text-success approve-transaction-btn" 
+                                                        data-transaction-uuid="{{ $transaction['uuid'] }}" 
+                                                        data-transaction-id="{{ $transaction['id'] }}"
+                                                        data-transaction-type="general">
+                                                    <i class="bx bx-check-circle me-2"></i> Approve Entry
+                                                </button>
+                                            @endif
                                         @endif
                                     </div>
                                 </div>
@@ -333,7 +394,7 @@
                                     </li>
                                 @else
                                     <li class="page-item disabled">
-                                        <span class->page-link">Next <i class="bx bx-chevron-right ms-1"></i></span>
+                                        <span class="page-link">Next <i class="bx bx-chevron-right ms-1"></i></span>
                                     </li>
                                 @endif
                             </ul>
@@ -464,7 +525,7 @@
         box-shadow: 0 4px 12px rgba(105, 108, 255, 0.3);
     }
     
-    .approve-payment-btn:hover {
+    .approve-transaction-btn:hover {
         transform: scale(1.02);
         filter: brightness(0.95);
     }
@@ -541,6 +602,13 @@
         overflow-x: auto;
         width: 100%;
     }
+    
+    /* Summary Cards */
+    .rounded-circle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 </style>
 
 <script>
@@ -548,6 +616,7 @@ $(document).ready(function() {
     var isAdmin = '{{ auth()->user()->role }}' == 'admin';
     
     if (isAdmin) {
+        // Approve Vendor Payment
         function approvePayment(uuid, id) {
             Swal.fire({
                 title: 'Approve Payment #' + id + '?',
@@ -577,14 +646,52 @@ $(document).ready(function() {
             });
         }
         
-        $(document).on('click', '.approve-payment-btn', function(e) {
+        // Approve General Entry
+        function approveGeneralEntry(id) {
+            Swal.fire({
+                title: 'Approve General Entry?',
+                text: "This entry will be marked as approved and the transfer will be processed.",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#28a745',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Yes, Approve',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if(result.isConfirmed) {
+                    Swal.fire({ title: 'Processing...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    $.ajax({
+                        url: '/general-transactions/approve/' + id,
+                        type: 'POST',
+                        data: { _token: '{{ csrf_token() }}' },
+                        success: function(response) { 
+                            Swal.fire({ title: 'Approved!', icon: 'success', timer: 1500, showConfirmButton: false }).then(() => location.reload()); 
+                        },
+                        error: function(xhr) { 
+                            let msg = xhr.responseJSON?.message || 'Something went wrong';
+                            Swal.fire({ title: 'Error!', text: msg, icon: 'error' }); 
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Handle approve button clicks
+        $(document).on('click', '.approve-transaction-btn', function(e) {
             e.preventDefault();
-            let uuid = $(this).data('payment-uuid');
-            let id = $(this).data('payment-id');
-            approvePayment(uuid, id);
+            let uuid = $(this).data('transaction-uuid');
+            let id = $(this).data('transaction-id');
+            let type = $(this).data('transaction-type');
+            
+            if (type === 'payment') {
+                approvePayment(uuid, id);
+            } else {
+                approveGeneralEntry(id);
+            }
         });
     }
     
+    // Auto-submit form on filter change
     $('#from_date, #to_date, select[name="type"]').on('change', function() {
         $('#filterForm').submit();
     });
@@ -601,7 +708,7 @@ function viewEntry(uuid, id) {
         </div>
     `);
     
-    if (uuid && uuid.toString().startsWith('daybook_')) {
+    if (uuid && uuid.toString().startsWith('daybook_') || uuid && uuid.toString().startsWith('entry_')) {
         setTimeout(function() {
             $('#modalContent').html(`
                 <div class="p-3">
