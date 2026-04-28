@@ -19,11 +19,67 @@ use Illuminate\Support\Str;
 class GeneralTransactionController extends Controller
 {
     /**
+     * Check if current user is Admin
+     */
+    private function isAdmin()
+    {
+        return auth()->user()->role == 'admin';
+    }
+
+    /**
+     * Approve a pending general entry (Admin only)
+     */
+    public function approveEntry($id)
+    {
+        if (!$this->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Access Denied. Only Admin can approve entries.'
+            ], 403);
+        }
+
+        try {
+            DB::beginTransaction();
+            
+            $entry = Daybook::findOrFail($id);
+            
+            if ($entry->approval_status === 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Entry already approved.'
+                ], 400);
+            }
+            
+            $entry->approval_status = 'approved';
+            $entry->save();
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Entry approved successfully.'
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Approve Entry Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Approval failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Display the main general transactions page
      */
     public function index()
     {
-        return view('admin.pages.general.index');
+        $pendingCount = Daybook::where('type', 'transaction')
+            ->where('approval_status', 'pending')
+            ->count();
+            
+        return view('admin.pages.general.index', compact('pendingCount'));
     }
 
     /**
@@ -70,21 +126,9 @@ class GeneralTransactionController extends Controller
     public function generalEntry()
     {
         try {
-            // Fetch all active customers
-            $customers = Customer::where('active', 1)
-                ->orderBy('name')
-                ->get();
-            
-            // Fetch all active vendors
-            $vendors = Vendor::where('active', 1)
-                ->orderBy('company_name')
-                ->get();
-            
-            // Fetch all banks
-            $banks = Bank::orderBy('name')
-                ->get();
-            
-            // Fetch cash record
+            $customers = Customer::where('active', 1)->orderBy('name')->get();
+            $vendors = Vendor::where('active', 1)->orderBy('company_name')->get();
+            $banks = Bank::orderBy('name')->get();
             $cash = Cash::first();
             
             return view('admin.pages.general.general-entry', compact('customers', 'vendors', 'banks', 'cash'));
@@ -96,7 +140,7 @@ class GeneralTransactionController extends Controller
     }
 
     /**
-     * Store a new general entry
+     * Store a new general entry (PENDING APPROVAL - No balance updates)
      */
     public function storeGeneralEntry(Request $request)
     {
@@ -115,7 +159,7 @@ class GeneralTransactionController extends Controller
             $amount = $request->amount;
             $userDescription = $request->description ?? '';
 
-            // Parse credit account (format: "type_id" e.g., "customer_1")
+            // Parse credit account
             $creditParts = explode('_', $request->credit_id);
             if (count($creditParts) != 2) {
                 throw new \Exception("Invalid credit account format");
@@ -123,7 +167,7 @@ class GeneralTransactionController extends Controller
             $creditType = $creditParts[0];
             $creditId = $creditParts[1];
 
-            // Parse debit account (format: "type_id" e.g., "vendor_2")
+            // Parse debit account
             $debitParts = explode('_', $request->debit_id);
             if (count($debitParts) != 2) {
                 throw new \Exception("Invalid debit account format");
@@ -137,125 +181,68 @@ class GeneralTransactionController extends Controller
                 throw new \Exception("Invalid account type. Must be customer, vendor, or bank.");
             }
 
-            // Initialize account variables
+            // Get accounts for validation only (NO BALANCE UPDATE YET)
             $creditAccount = null;
             $debitAccount = null;
 
-            // Process Credit Account (Money Out - Decrease balance)
             switch ($creditType) {
                 case 'customer':
                     $creditAccount = Customer::findOrFail($creditId);
-                    if ($creditAccount->balance < $amount) {
-                        throw new \Exception("Customer {$creditAccount->name} has insufficient balance. Available: PKR " . number_format($creditAccount->balance, 2));
-                    }
-                    $creditAccount->decrement('balance', $amount);
-                    
-                    CustomerTransaction::create([
-                        'uuid' => (string) Str::uuid(),
-                        'customer_id' => $creditAccount->id,
-                        'transaction_date' => $date,
-                        'amount' => $amount,
-                        'type' => 'payment',
-                        'description' => $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount),
-                        'current_balance' => $creditAccount->balance,
-                    ]);
                     break;
-
                 case 'vendor':
                     $creditAccount = Vendor::findOrFail($creditId);
-                    if ($creditAccount->balance < $amount) {
-                        throw new \Exception("Vendor {$creditAccount->company_name} has insufficient balance. Available: PKR " . number_format($creditAccount->balance, 2));
-                    }
-                    $creditAccount->decrement('balance', $amount);
-                    
-                    VendorTransaction::create([
-                        'uuid' => (string) Str::uuid(),
-                        'vendor_id' => $creditAccount->id,
-                        'date' => $date,
-                        'amount' => $amount,
-                        'type' => 'payment',
-                        'description' => $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount),
-                        'current_balance' => $creditAccount->balance,
-                    ]);
                     break;
-
                 case 'bank':
                     $creditAccount = Bank::findOrFail($creditId);
-                    if ($creditAccount->account_balance < $amount) {
-                        throw new \Exception("Bank {$creditAccount->name} has insufficient balance. Available: PKR " . number_format($creditAccount->account_balance, 2));
-                    }
-                    $creditAccount->decrement('account_balance', $amount);
-                    
-                    BankTransaction::create([
-                        'bank_id' => $creditAccount->id,
-                        'amount' => $amount,
-                        'balance' => $creditAccount->account_balance,
-                        'transaction_type' => 'debit',
-                        'description' => $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount),
-                    ]);
                     break;
             }
 
-            // Process Debit Account (Money In - Increase balance)
             switch ($debitType) {
                 case 'customer':
                     $debitAccount = Customer::findOrFail($debitId);
-                    $debitAccount->increment('balance', $amount);
-                    
-                    CustomerTransaction::create([
-                        'uuid' => (string) Str::uuid(),
-                        'customer_id' => $debitAccount->id,
-                        'transaction_date' => $date,
-                        'amount' => $amount,
-                        'type' => 'bill',
-                        'description' => $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount),
-                        'current_balance' => $debitAccount->balance,
-                    ]);
                     break;
-
                 case 'vendor':
                     $debitAccount = Vendor::findOrFail($debitId);
-                    $debitAccount->increment('balance', $amount);
-                    
-                    VendorTransaction::create([
-                        'uuid' => (string) Str::uuid(),
-                        'vendor_id' => $debitAccount->id,
-                        'date' => $date,
-                        'amount' => $amount,
-                        'type' => 'bill',
-                        'description' => $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount),
-                        'current_balance' => $debitAccount->balance,
-                    ]);
                     break;
-
                 case 'bank':
                     $debitAccount = Bank::findOrFail($debitId);
-                    $debitAccount->increment('account_balance', $amount);
-                    
-                    BankTransaction::create([
-                        'bank_id' => $debitAccount->id,
-                        'amount' => $amount,
-                        'balance' => $debitAccount->account_balance,
-                        'transaction_type' => 'credit',
-                        'description' => $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount),
-                    ]);
                     break;
             }
 
-            // Create daybook entry with clean description
-            $daybookDescription = $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount);
+            // Check if credit account has sufficient balance
+            $creditBalance = 0;
+            switch ($creditType) {
+                case 'customer':
+                    $creditBalance = $creditAccount->balance;
+                    break;
+                case 'vendor':
+                    $creditBalance = $creditAccount->balance;
+                    break;
+                case 'bank':
+                    $creditBalance = $creditAccount->account_balance;
+                    break;
+            }
             
+            if ($creditBalance < $amount) {
+                throw new \Exception("Insufficient balance in credit account. Available: PKR " . number_format($creditBalance, 2));
+            }
+
+            // Generate description
+            $daybookDescription = $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount);
+
+            // Create daybook entry with PENDING status (NO BALANCE UPDATES YET)
             Daybook::create([
                 'transaction_date' => $date,
                 'amount' => $amount,
                 'type' => 'transaction',
+                'approval_status' => 'pending',
                 'description' => $daybookDescription,
             ]);
 
             DB::commit();
 
             return redirect()->route('general-transactions.general-entry')
-                ->with('success', 'General entry created successfully. Description: ' . $daybookDescription);
+                ->with('success', 'General entry created successfully! Awaiting admin approval.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -348,13 +335,19 @@ class GeneralTransactionController extends Controller
     }
 
     /**
-     * Display list of general entries
+     * Display list of general entries with status filter
      */
-    public function generalEntriesList()
+    public function generalEntriesList(Request $request)
     {
         try {
-            $entries = Daybook::where('type', 'transaction')
-                ->orderBy('transaction_date', 'desc')
+            $query = Daybook::where('type', 'transaction');
+            
+            // Apply status filter
+            if ($request->approval_status && in_array($request->approval_status, ['pending', 'approved'])) {
+                $query->where('approval_status', $request->approval_status);
+            }
+            
+            $entries = $query->orderBy('transaction_date', 'desc')
                 ->paginate(20);
             
             return view('admin.pages.general.entries-list', compact('entries'));
@@ -365,15 +358,8 @@ class GeneralTransactionController extends Controller
         }
     }
 
-    public function customerToVendorForm()
-    {
-        $customers = Customer::all();
-        $vendors = Vendor::all();
-        return view('admin.pages.general.customer-to-vendor', compact('customers', 'vendors'));
-    }
-
     /**
-     * Process customer to vendor transfer
+     * Process customer to vendor transfer (PENDING APPROVAL)
      */
     public function customerToVendorTransfer(Request $request)
     {
@@ -398,50 +384,23 @@ class GeneralTransactionController extends Controller
                     ->with('error', 'Customer does not have sufficient balance. Available: PKR ' . number_format($customer->balance, 2));
             }
 
-            // Decrease customer balance
-            $customer->decrement('balance', $request->amount);
-
-            // Decrease vendor balance
-            $vendor->decrement('balance', $request->amount);
-
             $description = $request->description 
                 ? $request->description . ' - Transfer from ' . $customer->name . ' to ' . $vendor->company_name
                 : 'Transfer from ' . $customer->name . ' to ' . $vendor->company_name;
 
-            // Create customer transaction
-            CustomerTransaction::create([
-                'uuid' => (string) Str::uuid(),
-                'customer_id' => $customer->id,
-                'transaction_date' => $request->transaction_date,
-                'amount' => $request->amount,
-                'type' => 'payment',
-                'description' => $description,
-                'current_balance' => $customer->balance,
-            ]);
-
-            // Create vendor transaction
-            VendorTransaction::create([
-                'uuid' => (string) Str::uuid(),
-                'vendor_id' => $vendor->id,
-                'date' => $request->transaction_date,
-                'amount' => $request->amount,
-                'type' => 'payment',
-                'description' => $description,
-                'current_balance' => $vendor->balance,
-            ]);
-
-            // Create daybook entry
+            // Create pending daybook entry (NO BALANCE UPDATES YET)
             Daybook::create([
                 'transaction_date' => $request->transaction_date,
                 'amount' => $request->amount,
                 'type' => 'transaction',
+                'approval_status' => 'pending',
                 'description' => $description,
             ]);
 
             DB::commit();
 
             return redirect()->route('general-transactions.index')
-                ->with('success', 'Transfer completed successfully');
+                ->with('success', 'Transfer request created successfully! Awaiting admin approval.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -453,16 +412,7 @@ class GeneralTransactionController extends Controller
     }
 
     /**
-     * Show bank to bank transfer form
-     */
-    public function bankToBankForm()
-    {
-        $banks = Bank::all();
-        return view('admin.pages.general.bank-to-bank', compact('banks'));
-    }
-
-    /**
-     * Process bank to bank transfer
+     * Process bank to bank transfer (PENDING APPROVAL)
      */
     public function bankToBankTransfer(Request $request)
     {
@@ -486,40 +436,23 @@ class GeneralTransactionController extends Controller
                     ->with('error', 'Insufficient balance in source bank. Available: PKR ' . number_format($fromBank->account_balance, 2));
             }
 
-            $fromBank->decrement('account_balance', $request->amount);
-            $toBank->increment('account_balance', $request->amount);
-
             $description = $request->description 
                 ? $request->description . ' - Bank transfer from ' . $fromBank->name . ' to ' . $toBank->name
                 : 'Bank transfer from ' . $fromBank->name . ' to ' . $toBank->name;
 
-            BankTransaction::create([
-                'bank_id' => $fromBank->id,
-                'amount' => $request->amount,
-                'balance' => $fromBank->account_balance,
-                'transaction_type' => 'debit',
-                'description' => $description,
-            ]);
-
-            BankTransaction::create([
-                'bank_id' => $toBank->id,
-                'amount' => $request->amount,
-                'balance' => $toBank->account_balance,
-                'transaction_type' => 'credit',
-                'description' => $description,
-            ]);
-
+            // Create pending daybook entry (NO BALANCE UPDATES YET)
             Daybook::create([
                 'transaction_date' => $request->transaction_date,
                 'amount' => $request->amount,
                 'type' => 'transaction',
+                'approval_status' => 'pending',
                 'description' => $description,
             ]);
 
             DB::commit();
 
             return redirect()->route('general-transactions.index')
-                ->with('success', 'Bank transfer completed successfully');
+                ->with('success', 'Bank transfer request created successfully! Awaiting admin approval.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -531,17 +464,7 @@ class GeneralTransactionController extends Controller
     }
 
     /**
-     * Show bank withdrawal form
-     */
-    public function bankWithdrawForm()
-    {
-        $banks = Bank::all();
-        $cash = Cash::first();
-        return view('admin.pages.general.bank-withdraw', compact('banks', 'cash'));
-    }
-
-    /**
-     * Process bank withdrawal
+     * Process bank withdrawal (PENDING APPROVAL)
      */
     public function bankWithdraw(Request $request)
     {
@@ -571,40 +494,23 @@ class GeneralTransactionController extends Controller
                     ->with('error', 'Insufficient balance in bank. Available: PKR ' . number_format($bank->account_balance, 2));
             }
 
-            $bank->decrement('account_balance', $request->amount);
-            $cash->increment('balance', $request->amount);
-
             $description = $request->description 
                 ? $request->description . ' - Cash withdrawal from ' . $bank->name
                 : 'Cash withdrawal from ' . $bank->name;
 
-            BankTransaction::create([
-                'bank_id' => $bank->id,
-                'amount' => $request->amount,
-                'balance' => $bank->account_balance,
-                'transaction_type' => 'debit',
-                'description' => $description,
-            ]);
-
-            CashTransaction::create([
-                'cash_id' => $cash->id,
-                'amount' => $request->amount,
-                'balance' => $cash->balance,
-                'transaction_type' => 'credit',
-                'description' => $description,
-            ]);
-
+            // Create pending daybook entry (NO BALANCE UPDATES YET)
             Daybook::create([
                 'transaction_date' => $request->transaction_date,
                 'amount' => $request->amount,
                 'type' => 'transaction',
+                'approval_status' => 'pending',
                 'description' => $description,
             ]);
 
             DB::commit();
 
             return redirect()->route('general-transactions.index')
-                ->with('success', 'Withdrawal completed successfully');
+                ->with('success', 'Withdrawal request created successfully! Awaiting admin approval.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -616,17 +522,7 @@ class GeneralTransactionController extends Controller
     }
 
     /**
-     * Show bank deposit form
-     */
-    public function bankDepositForm()
-    {
-        $banks = Bank::all();
-        $cash = Cash::first();
-        return view('admin.pages.general.bank-deposit', compact('banks', 'cash'));
-    }
-
-    /**
-     * Process bank deposit
+     * Process bank deposit (PENDING APPROVAL)
      */
     public function bankDeposit(Request $request)
     {
@@ -649,40 +545,23 @@ class GeneralTransactionController extends Controller
                     ->with('error', 'Insufficient cash balance. Available: PKR ' . number_format($cash ? $cash->balance : 0, 2));
             }
 
-            $cash->decrement('balance', $request->amount);
-            $bank->increment('account_balance', $request->amount);
-
             $description = $request->description 
                 ? $request->description . ' - Cash deposit to ' . $bank->name
                 : 'Cash deposit to ' . $bank->name;
 
-            CashTransaction::create([
-                'cash_id' => $cash->id,
-                'amount' => $request->amount,
-                'balance' => $cash->balance,
-                'transaction_type' => 'debit',
-                'description' => $description,
-            ]);
-
-            BankTransaction::create([
-                'bank_id' => $bank->id,
-                'amount' => $request->amount,
-                'balance' => $bank->account_balance,
-                'transaction_type' => 'credit',
-                'description' => $description,
-            ]);
-
+            // Create pending daybook entry (NO BALANCE UPDATES YET)
             Daybook::create([
                 'transaction_date' => $request->transaction_date,
                 'amount' => $request->amount,
                 'type' => 'transaction',
+                'approval_status' => 'pending',
                 'description' => $description,
             ]);
 
             DB::commit();
 
             return redirect()->route('general-transactions.index')
-                ->with('success', 'Deposit completed successfully');
+                ->with('success', 'Deposit request created successfully! Awaiting admin approval.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -691,5 +570,33 @@ class GeneralTransactionController extends Controller
                 ->withInput()
                 ->with('error', 'Deposit failed: ' . $e->getMessage());
         }
+    }
+
+    // Keep the form methods as they are (customerToVendorForm, bankToBankForm, bankWithdrawForm, bankDepositForm)
+    public function customerToVendorForm()
+    {
+        $customers = Customer::all();
+        $vendors = Vendor::all();
+        return view('admin.pages.general.customer-to-vendor', compact('customers', 'vendors'));
+    }
+
+    public function bankToBankForm()
+    {
+        $banks = Bank::all();
+        return view('admin.pages.general.bank-to-bank', compact('banks'));
+    }
+
+    public function bankWithdrawForm()
+    {
+        $banks = Bank::all();
+        $cash = Cash::first();
+        return view('admin.pages.general.bank-withdraw', compact('banks', 'cash'));
+    }
+
+    public function bankDepositForm()
+    {
+        $banks = Bank::all();
+        $cash = Cash::first();
+        return view('admin.pages.general.bank-deposit', compact('banks', 'cash'));
     }
 }
