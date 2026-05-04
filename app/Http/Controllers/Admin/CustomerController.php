@@ -545,4 +545,19 @@ class CustomerController extends Controller
             ]);
         }
     }
+    /**
+ * Show the form for creating a new customer
+ */
+public function create()
+{
+    try {
+        return view('admin.pages.customers.create');
+    } catch (\Exception $e) {
+        Log::error('Failed to load customer creation form: ' . $e->getMessage());
+        return redirect()->back()->with([
+            'status' => false,
+            'message' => 'Failed to load form: ' . $e->getMessage(),
+        ]);
+    }
+}
 }
