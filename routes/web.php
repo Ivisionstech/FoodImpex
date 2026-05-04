@@ -136,7 +136,8 @@ Route::get('payment-details/{uuid}', [VendorBillController::class, 'paymentDetai
     Route::get('customers/receive-payment/{uuid}', [CustomerBillController::class, 'receivePayment'])->name('customers.receive-payment');
     Route::post('customers/receive-payment/store/{uuid}', [CustomerBillController::class, 'storeReceivePayment'])->name('customers.receive-payment.store');
     Route::get('customers/receive-payment/{uuid}/show', [CustomerBillController::class, 'showReceivePayment'])->name('customers.receive-payment.show');
-
+// Customer Bank Statement Route
+Route::get('customers/bank-statement/{uuid}', [CustomerBillController::class, 'bankStatementReport'])->name('customers.bank-statement');
 
 
     // Customer Bills Approve/Reject Routes
