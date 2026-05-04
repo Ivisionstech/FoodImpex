@@ -68,33 +68,36 @@ Route::prefix('vendors')->name('vendors.')->group(function () {
     Route::post('send-payment/store/{uuid}', [VendorBillController::class, 'storeSendPayment'])->name('send-payment.store');
     
     // ============ BILLS ROUTES ============
-    Route::get('bills/list', [VendorBillController::class, 'list'])->name('bills.list');
-    
-    // General Bill Creation (without stock update)
-    Route::get('bills/general-create-2', [VendorBillController::class, 'generalCreate2'])->name('bills.general_create_2');
-    Route::post('bills/general-store', [VendorBillController::class, 'generalStore'])->name('bills.general_store');
-    
-    // General Bill View, Edit, PDF
-    Route::get('bills/general-show-2/{uuid}', [VendorBillController::class, 'generalShow2'])->name('bills.general_show_2');
-    Route::get('bills/general-edit-2/{uuid}', [VendorBillController::class, 'generalEdit2'])->name('bills.general_edit_2');
-    Route::put('bills/general-update-2/{uuid}', [VendorBillController::class, 'generalUpdate2'])->name('bills.general_update_2');
-    Route::get('bills/general-pdf-2/{uuid}', [VendorBillController::class, 'generalPdf2'])->name('bills.general_pdf_2');
-    
-    // Old bill routes (for other types)
-    Route::get('bills/create/{uuid}', [VendorBillController::class, 'create'])->name('bills.create');
-    Route::post('bills/store/{uuid}', [VendorBillController::class, 'store'])->name('bills.store');
-    Route::get('bills/edit/{uuid}', [VendorBillController::class, 'edit'])->name('bills.edit');
-    Route::put('bills/update/{uuid}', [VendorBillController::class, 'update'])->name('bills.update');
-    Route::post('bills/delete/{uuid}', [VendorBillController::class, 'delete'])->name('bills.delete');
-    
-    // Approve & Reject Bill Routes
-    Route::post('bills/approve/{uuid}', [VendorBillController::class, 'approveBill'])->name('bills.approve');
-    Route::post('bills/reject/{uuid}', [VendorBillController::class, 'rejectBill'])->name('bills.reject');
-    
-    Route::get('bills/{uuid}', [VendorBillController::class, 'show'])->name('bills.show');
-    Route::get('bills/{uuid}/download', [VendorBillController::class, 'downloadPdf'])->name('bills.download');
-    
-    Route::get('payment-details/{uuid}', [VendorBillController::class, 'paymentDetails'])->name('payment-details');
+Route::get('bills/list', [VendorBillController::class, 'list'])->name('bills.list');
+
+// General Bill Creation (without stock update)
+Route::get('bills/general-create-2', [VendorBillController::class, 'generalCreate2'])->name('bills.general_create_2');
+Route::post('bills/general-store', [VendorBillController::class, 'generalStore'])->name('bills.general_store');
+
+// General Bill View, Edit, PDF
+Route::get('bills/general-show-2/{uuid}', [VendorBillController::class, 'generalShow2'])->name('bills.general_show_2');
+Route::get('bills/general-edit-2/{uuid}', [VendorBillController::class, 'generalEdit2'])->name('bills.general_edit_2');
+Route::put('bills/general-update-2/{uuid}', [VendorBillController::class, 'generalUpdate2'])->name('bills.general_update_2');
+Route::get('bills/general-pdf-2/{uuid}', [VendorBillController::class, 'generalPdf2'])->name('bills.general_pdf_2');
+
+// Old bill routes (for other types)
+Route::get('bills/create/{uuid}', [VendorBillController::class, 'create'])->name('bills.create');
+Route::post('bills/store/{uuid}', [VendorBillController::class, 'store'])->name('bills.store');
+Route::get('bills/edit/{uuid}', [VendorBillController::class, 'edit'])->name('bills.edit');
+Route::put('bills/update/{uuid}', [VendorBillController::class, 'update'])->name('bills.update');
+Route::post('bills/delete/{uuid}', [VendorBillController::class, 'delete'])->name('bills.delete');
+
+// Approve & Reject Bill Routes
+Route::post('bills/approve/{uuid}', [VendorBillController::class, 'approveBill'])->name('bills.approve');
+Route::post('bills/reject/{uuid}', [VendorBillController::class, 'rejectBill'])->name('bills.reject');
+
+// Vendor Payment Approval Route
+Route::post('payments/approve/{uuid}', [VendorBillController::class, 'approveVendorPayment'])->name('vendors.payments.approve');
+
+Route::get('bills/{uuid}', [VendorBillController::class, 'show'])->name('bills.show');
+Route::get('bills/{uuid}/download', [VendorBillController::class, 'downloadPdf'])->name('bills.download');
+
+Route::get('payment-details/{uuid}', [VendorBillController::class, 'paymentDetails'])->name('payment-details');
     Route::get('bank-statement/{uuid}', [VendorController::class, 'downloadBankStatement'])->name('bank-statement');
 });
     // ==================== CUSTOMERS ROUTES ====================
@@ -237,6 +240,9 @@ Route::delete('customers/bills/delete/{uuid}', [CustomerBillController::class, '
     
     Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
 });
+
+
+
     // ==================== ACCESS CONTROL ROUTES ====================
     Route::prefix('access-control')->name('access-control.')->group(function () {
         Route::resource('roles', RoleController::class);

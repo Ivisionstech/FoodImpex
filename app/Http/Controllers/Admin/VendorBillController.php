@@ -58,93 +58,171 @@ class VendorBillController extends Controller
     }
 
     /**
- * Approve a pending bill and update stock (Admin only)
- */
-public function approveBill($uuid)
-{
-    try {
-        DB::beginTransaction();
-        
-        $bill = Bill::where('uuid', $uuid)
-            ->with(['billProducts.product', 'vendor'])
-            ->firstOrFail();
-        
-        if ($bill->approval_status === 'approved') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bill already approved.'
-            ], 400);
-        }
-        
-        $bill->approval_status = 'approved';
-        $bill->save();
-        
-        // ADD STOCK AND UPDATE PRODUCT DETAILS FOR EACH PRODUCT IN THE BILL
-        foreach ($bill->billProducts as $billProduct) {
-            $product = $billProduct->product;
-            $quantity = (float)$billProduct->quantity;
+     * Approve a pending bill and update stock (Admin only)
+     */
+    public function approveBill($uuid)
+    {
+        try {
+            DB::beginTransaction();
             
-            if ($product) {
-                // Get values from bill product
-                $netWeight = $billProduct->net_weight ?? 0;
-                $ratePer40kg = $billProduct->price ?? 0;
-                $packing = $billProduct->packing ?? 0;
-                $totalWeight = $billProduct->total_weight ?? 0;
-                $bardanaWeight = $billProduct->bardana_weight ?? 0;
+            $bill = Bill::where('uuid', $uuid)
+                ->with(['billProducts.product', 'vendor'])
+                ->firstOrFail();
+            
+            if ($bill->approval_status === 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bill already approved.'
+                ], 400);
+            }
+            
+            $bill->approval_status = 'approved';
+            $bill->save();
+            
+            // ADD STOCK AND UPDATE PRODUCT DETAILS FOR EACH PRODUCT IN THE BILL
+            foreach ($bill->billProducts as $billProduct) {
+                $product = $billProduct->product;
+                $quantity = (float)$billProduct->quantity;
                 
-                // Update product with Net Weight and Rate
-                $product->update([
-                    'net_weight' => $netWeight,
-                    'price_40kg' => $ratePer40kg,
-                    'purchase_price' => $ratePer40kg,
-                    'packing' => $packing,
-                    'total_weight' => $totalWeight,
-                    'bardana_weight' => $bardanaWeight
-                ]);
-                
-                // Increment stock by quantity
-                $product->increment('stock', $quantity);
-                
-                // Record in Stock History
-                StockHistory::create([
-                    'uuid' => (string) Str::uuid(),
-                    'date' => $bill->date,
-                    'product_id' => $product->id,
-                    'quantity' => $quantity,
-                    'type' => 'in',
-                    'current_stock' => $product->stock,
-                    'description' => 'Purchase approved: Bill #' . $bill->id . ' from ' . ($bill->vendor->company_name ?? 'Vendor') . ' | Net Wt: ' . $netWeight . ' | Rate: ' . $ratePer40kg,
+                if ($product) {
+                    // Get values from bill product
+                    $netWeight = $billProduct->net_weight ?? 0;
+                    $ratePer40kg = $billProduct->price ?? 0;
+                    $packing = $billProduct->packing ?? 0;
+                    $totalWeight = $billProduct->total_weight ?? 0;
+                    $bardanaWeight = $billProduct->bardana_weight ?? 0;
+                    
+                    // Update product with Net Weight and Rate
+                    $product->update([
+                        'net_weight' => $netWeight,
+                        'price_40kg' => $ratePer40kg,
+                        'purchase_price' => $ratePer40kg,
+                        'packing' => $packing,
+                        'total_weight' => $totalWeight,
+                        'bardana_weight' => $bardanaWeight
+                    ]);
+                    
+                    // Increment stock by quantity
+                    $product->increment('stock', $quantity);
+                    
+                    // Record in Stock History
+                    StockHistory::create([
+                        'uuid' => (string) Str::uuid(),
+                        'date' => $bill->date,
+                        'product_id' => $product->id,
+                        'quantity' => $quantity,
+                        'type' => 'in',
+                        'current_stock' => $product->stock,
+                        'description' => 'Purchase approved: Bill #' . $bill->id . ' from ' . ($bill->vendor->company_name ?? 'Vendor') . ' | Net Wt: ' . $netWeight . ' | Rate: ' . $ratePer40kg,
+                    ]);
+                }
+            }
+            
+            // Update vendor transaction description
+            $vendorTransaction = VendorTransaction::where('bill_id', $bill->id)
+                ->where('type', 'bill')
+                ->first();
+            
+            if ($vendorTransaction) {
+                $vendorTransaction->update([
+                    'description' => 'Purchase Bill Approved: ' . $bill->billProducts->count() . ' items from ' . ($bill->vendor->company_name ?? 'Vendor'),
                 ]);
             }
-        }
-        
-        // Update vendor transaction description
-        $vendorTransaction = VendorTransaction::where('bill_id', $bill->id)
-            ->where('type', 'bill')
-            ->first();
-        
-        if ($vendorTransaction) {
-            $vendorTransaction->update([
-                'description' => 'Purchase Bill Approved: ' . $bill->billProducts->count() . ' items from ' . ($bill->vendor->company_name ?? 'Vendor'),
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Bill approved successfully. Stock, Net Weight & Rate have been updated.'
             ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Approve Bill Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Approval failed: ' . $e->getMessage()
+            ], 500);
         }
-        
-        DB::commit();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Bill approved successfully. Stock, Net Weight & Rate have been updated.'
-        ]);
-        
-    } catch (\Exception $e) {
-        DB::rollBack();
-        \Log::error('Approve Bill Error: ' . $e->getMessage());
-        return response()->json([
-            'success' => false,
-            'message' => 'Approval failed: ' . $e->getMessage()
-        ], 500);
     }
-}
+
+    /**
+     * NEW METHOD: Approve a pending vendor payment (Admin only)
+     */
+    public function approveVendorPayment($uuid)
+    {
+        if (!$this->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Access Denied. Only Admin can approve payments.'
+            ], 403);
+        }
+
+        try {
+            DB::beginTransaction();
+            
+            $payment = VendorTransaction::where('uuid', $uuid)->firstOrFail();
+            
+            if ($payment->approval_status === 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment already approved.'
+                ], 400);
+            }
+            
+            $payment->approval_status = 'approved';
+            $payment->save();
+            
+            // Update vendor balance (decrease balance - paid to vendor)
+            $vendor = $payment->vendor;
+            $vendor->decrement('balance', $payment->amount);
+            $payment->current_balance = $vendor->balance;
+            $payment->save();
+            
+            // Update bank or cash balance
+            if ($payment->send_via == 'bank') {
+                $bank = Bank::find($payment->bank_id);
+                if ($bank) {
+                    $bank->decrement('account_balance', $payment->amount);
+                    
+                    BankTransaction::where('vendor_transaction_id', $payment->id)->update([
+                        'balance' => $bank->account_balance,
+                        'description' => 'Payment to ' . ($vendor->company_name ?? 'Vendor') . ' (Approved)',
+                    ]);
+                }
+            } else {
+                $cash = Cash::first();
+                if ($cash) {
+                    $cash->decrement('balance', $payment->amount);
+                    
+                    CashTransaction::where('vendor_transaction_id', $payment->id)->update([
+                        'balance' => $cash->balance,
+                        'description' => 'Payment to ' . ($vendor->company_name ?? 'Vendor') . ' (Approved)',
+                    ]);
+                }
+            }
+            
+            // Update daybook entry
+            Daybook::where('vendor_transaction_id', $payment->id)->update([
+                'description' => 'Payment to ' . ($vendor->company_name ?? 'Vendor') . ' (Approved)',
+            ]);
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment approved successfully. Vendor balance updated.'
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Approve Vendor Payment Error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Approval failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 
     /**
      * Reject a pending bill (Delete it)
@@ -204,173 +282,165 @@ public function approveBill($uuid)
     /**
      * Finalized General Store Function - NO STOCK UPDATE
      */
-    /**
- * Finalized General Store Function - NO STOCK UPDATE
- */
-public function generalStore(Request $request): RedirectResponse
-{
-    \Log::info('===== generalStore() STARTED - This method should NOT update stock or product =====');
-    
-    $request->validate([
-        'vendor_id' => 'required|exists:vendors,id',
-        'date' => 'required',
-        'payment_terms' => 'nullable|string',
-        'type' => 'required|in:bill,product',
-        'products' => 'required|array|min:1',
-        'products.*.product_type' => 'required|in:existing,new',
-        'products.*.quantity' => 'required|numeric|min:1',
-        'products.*.price' => 'required|numeric|min:0',
-        'products.*.name' => 'required_if:products.*.product_type,new',
-        'products.*.image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
-        'products.*.product_id' => 'required_if:products.*.product_type,existing|nullable|exists:products,id',
-    ]);
-
-    try {
-        DB::beginTransaction();
-
-        $vendor = Vendor::findOrFail($request->vendor_id);
-        $billType = $request->input('type', 'product');
-
-        // Create bill with pending approval
-        $bill = Bill::create([
-            'uuid' => (string) Str::uuid(),
-            'vendor_id' => $vendor->id,
-            'date' => $request->date,
-            'payment_terms' => $request->input('payment_terms'),
-            'status' => 'pending',
-            'approval_status' => 'pending',
-            'total_amount' => 0,
+    public function generalStore(Request $request): RedirectResponse
+    {
+        \Log::info('===== generalStore() STARTED - This method should NOT update stock or product =====');
+        
+        $request->validate([
+            'vendor_id' => 'required|exists:vendors,id',
+            'date' => 'required',
+            'payment_terms' => 'nullable|string',
+            'type' => 'required|in:bill,product',
+            'products' => 'required|array|min:1',
+            'products.*.product_type' => 'required|in:existing,new',
+            'products.*.quantity' => 'required|numeric|min:1',
+            'products.*.price' => 'required|numeric|min:0',
+            'products.*.name' => 'required_if:products.*.product_type,new',
+            'products.*.image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'products.*.product_id' => 'required_if:products.*.product_type,existing|nullable|exists:products,id',
         ]);
 
-        \Log::info('Bill created with ID: ' . $bill->id . ' - Status: pending');
+        try {
+            DB::beginTransaction();
 
-        $grandTotalAmount = 0;
+            $vendor = Vendor::findOrFail($request->vendor_id);
+            $billType = $request->input('type', 'product');
 
-        foreach ($request->products as $index => $productData) {
-            $productId = null;
-            $quantity = (float)$productData['quantity'];
-            $price = (float)$productData['price'];
-            $description = $productData['description'] ?? null;
-            $packing = isset($productData['packing']) ? (float)$productData['packing'] : null;
-            $totalWeight = isset($productData['total_weight']) ? (float)$productData['total_weight'] : null;
-            $bardanaWeight = isset($productData['bardana_weight']) ? (float)$productData['bardana_weight'] : null;
-            $netWeight = isset($productData['net_weight']) ? (float)$productData['net_weight'] : null;
-            $totalPrice = isset($productData['total_price']) ? (float)$productData['total_price'] : ($quantity * $price);
-
-            if ($productData['product_type'] === 'new') {
-                $imagePath = null;
-                if ($request->hasFile("products.$index.image")) {
-                    $imagePath = $request->file("products.$index.image")->store('products', 'public');
-                }
-
-                // Create new product with ZERO stock (values will be updated on approval)
-                $product = Product::create([
-                    'uuid' => (string) Str::uuid(),
-                    'name' => $productData['name'],
-                    'vendor_id' => $vendor->id,
-                    'purchase_price' => 0, // Will be updated on approval
-                    'net_weight' => 0, // Will be updated on approval
-                    'price_40kg' => 0, // Will be updated on approval
-                    'stock' => 0, // Will be updated on approval
-                    'description' => $description,
-                    'image' => $imagePath,
-                    'sale_price' => 0,
-                ]);
-                $productId = $product->id;
-                \Log::info('New product created: ' . $product->name . ' - Stock: 0 (pending approval)');
-            } else {
-                $productId = $productData['product_id'];
-                // DO NOT UPDATE PRODUCT HERE - Keep existing values
-                // Only get the product reference for bill
-                $product = Product::findOrFail($productId);
-                \Log::info('Existing product used: ' . $product->name . ' - Current stock: ' . $product->stock . ' (will be updated on approval)');
-            }
-
-            // Save bill product (WITHOUT updating stock or product)
-            $bill->billProducts()->create([
+            // Create bill with pending approval
+            $bill = Bill::create([
                 'uuid' => (string) Str::uuid(),
-                'product_id' => $productId,
-                'quantity' => $quantity,
-                'packing' => $packing,
-                'total_weight' => $totalWeight,
-                'bardana_weight' => $bardanaWeight,
-                'net_weight' => $netWeight,
-                'price' => $price,
-                'total_price' => $totalPrice,
-                'type' => $billType,
-                'description' => $description,
+                'vendor_id' => $vendor->id,
+                'date' => $request->date,
+                'payment_terms' => $request->input('payment_terms'),
+                'status' => 'pending',
+                'approval_status' => 'pending',
+                'total_amount' => 0,
             ]);
 
-            // CRITICAL: NO stock increment here!
-            // CRITICAL: NO product update here!
-            // CRITICAL: NO StockHistory::create() here!
+            \Log::info('Bill created with ID: ' . $bill->id . ' - Status: pending');
 
-            $grandTotalAmount += $totalPrice;
-        }
+            $grandTotalAmount = 0;
 
-        // Process extra charges (subtract)
-        if ($request->has('extra_charges')) {
-            foreach ($request->extra_charges as $chargeData) {
-                if (!empty($chargeData['amount']) && $chargeData['amount'] > 0) {
-                    BillExtraCharge::create([
-                        'bill_id' => $bill->id,
-                        'name' => $chargeData['name'],
-                        'amount' => $chargeData['amount'],
+            foreach ($request->products as $index => $productData) {
+                $productId = null;
+                $quantity = (float)$productData['quantity'];
+                $price = (float)$productData['price'];
+                $description = $productData['description'] ?? null;
+                $packing = isset($productData['packing']) ? (float)$productData['packing'] : null;
+                $totalWeight = isset($productData['total_weight']) ? (float)$productData['total_weight'] : null;
+                $bardanaWeight = isset($productData['bardana_weight']) ? (float)$productData['bardana_weight'] : null;
+                $netWeight = isset($productData['net_weight']) ? (float)$productData['net_weight'] : null;
+                $totalPrice = isset($productData['total_price']) ? (float)$productData['total_price'] : ($quantity * $price);
+
+                if ($productData['product_type'] === 'new') {
+                    $imagePath = null;
+                    if ($request->hasFile("products.$index.image")) {
+                        $imagePath = $request->file("products.$index.image")->store('products', 'public');
+                    }
+
+                    // Create new product with ZERO stock (values will be updated on approval)
+                    $product = Product::create([
+                        'uuid' => (string) Str::uuid(),
+                        'name' => $productData['name'],
+                        'vendor_id' => $vendor->id,
+                        'purchase_price' => 0,
+                        'net_weight' => 0,
+                        'price_40kg' => 0,
+                        'stock' => 0,
+                        'description' => $description,
+                        'image' => $imagePath,
+                        'sale_price' => 0,
                     ]);
-                    $grandTotalAmount -= (float)$chargeData['amount'];
+                    $productId = $product->id;
+                    \Log::info('New product created: ' . $product->name . ' - Stock: 0 (pending approval)');
+                } else {
+                    $productId = $productData['product_id'];
+                    // DO NOT UPDATE PRODUCT HERE - Keep existing values
+                    $product = Product::findOrFail($productId);
+                    \Log::info('Existing product used: ' . $product->name . ' - Current stock: ' . $product->stock);
+                }
+
+                // Save bill product (WITHOUT updating stock or product)
+                $bill->billProducts()->create([
+                    'uuid' => (string) Str::uuid(),
+                    'product_id' => $productId,
+                    'quantity' => $quantity,
+                    'packing' => $packing,
+                    'total_weight' => $totalWeight,
+                    'bardana_weight' => $bardanaWeight,
+                    'net_weight' => $netWeight,
+                    'price' => $price,
+                    'total_price' => $totalPrice,
+                    'type' => $billType,
+                    'description' => $description,
+                ]);
+
+                $grandTotalAmount += $totalPrice;
+            }
+
+            // Process extra charges (subtract)
+            if ($request->has('extra_charges')) {
+                foreach ($request->extra_charges as $chargeData) {
+                    if (!empty($chargeData['amount']) && $chargeData['amount'] > 0) {
+                        BillExtraCharge::create([
+                            'bill_id' => $bill->id,
+                            'name' => $chargeData['name'],
+                            'amount' => $chargeData['amount'],
+                        ]);
+                        $grandTotalAmount -= (float)$chargeData['amount'];
+                    }
                 }
             }
-        }
 
-        // Process additional charges (add)
-        if ($request->has('additional_charges')) {
-            foreach ($request->additional_charges as $chargeData) {
-                if (!empty($chargeData['amount']) && $chargeData['amount'] > 0) {
-                    BillAdditionalCharge::create([
-                        'bill_id' => $bill->id,
-                        'name' => $chargeData['name'],
-                        'amount' => $chargeData['amount'],
-                    ]);
-                    $grandTotalAmount += (float)$chargeData['amount'];
+            // Process additional charges (add)
+            if ($request->has('additional_charges')) {
+                foreach ($request->additional_charges as $chargeData) {
+                    if (!empty($chargeData['amount']) && $chargeData['amount'] > 0) {
+                        BillAdditionalCharge::create([
+                            'bill_id' => $bill->id,
+                            'name' => $chargeData['name'],
+                            'amount' => $chargeData['amount'],
+                        ]);
+                        $grandTotalAmount += (float)$chargeData['amount'];
+                    }
                 }
             }
+
+            // Update bill total
+            $bill->update(['total_amount' => $grandTotalAmount]);
+
+            // Update vendor balance (liability increases)
+            $vendor->increment('balance', $grandTotalAmount);
+
+            // Record vendor transaction
+            VendorTransaction::create([
+                'uuid' => (string) Str::uuid(),
+                'date' => $request->date,
+                'amount' => $grandTotalAmount,
+                'description' => 'Purchase Bill (Pending Approval): ' . count($request->products) . ' items from ' . $vendor->company_name,
+                'type' => 'bill',
+                'transaction_type' => 'credit',
+                'current_balance' => $vendor->balance,
+                'bill_id' => $bill->id,
+                'vendor_id' => $vendor->id,
+            ]);
+
+            DB::commit();
+
+            \Log::info('===== generalStore() COMPLETED - Stock and Product NOT updated for Bill ID: ' . $bill->id . ' =====');
+
+            return redirect()
+                ->route('vendors.view', $vendor->uuid)
+                ->with('success', 'Bill created successfully and sent for Admin approval. Stock will be updated after approval.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('generalStore Error: ' . $e->getMessage());
+            return back()
+                ->withInput()
+                ->with('error', 'Critical Error: ' . $e->getMessage());
         }
-
-        // Update bill total
-        $bill->update(['total_amount' => $grandTotalAmount]);
-
-        // Update vendor balance (liability increases)
-        $vendor->increment('balance', $grandTotalAmount);
-
-        // Record vendor transaction
-        VendorTransaction::create([
-            'uuid' => (string) Str::uuid(),
-            'date' => $request->date,
-            'amount' => $grandTotalAmount,
-            'description' => 'Purchase Bill (Pending Approval): ' . count($request->products) . ' items from ' . $vendor->company_name,
-            'type' => 'bill',
-            'transaction_type' => 'credit',
-            'current_balance' => $vendor->balance,
-            'bill_id' => $bill->id,
-            'vendor_id' => $vendor->id,
-        ]);
-
-        DB::commit();
-
-        \Log::info('===== generalStore() COMPLETED - Stock and Product NOT updated for Bill ID: ' . $bill->id . ' =====');
-
-        return redirect()
-            ->route('vendors.view', $vendor->uuid)
-            ->with('success', 'Bill created successfully and sent for Admin approval. Stock and product details will be updated after approval.');
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        \Log::error('generalStore Error: ' . $e->getMessage());
-        return back()
-            ->withInput()
-            ->with('error', 'Critical Error: ' . $e->getMessage());
     }
-}
 
     /**
      * Show edit form for "Create Bill 2" (general_2 bills only)
@@ -650,6 +720,7 @@ public function generalStore(Request $request): RedirectResponse
             $fromDate = $request->from_date;
             $toDate = $request->to_date;
             $type = $request->type;
+            $approvalStatus = $request->approval_status;
 
             if (!$fromDate && !$toDate) {
                 $fromDate = '2026-01-01';
@@ -663,6 +734,9 @@ public function generalStore(Request $request): RedirectResponse
             }
             if ($toDate) {
                 $paymentsQuery->whereDate('date', '<=', $toDate);
+            }
+            if ($approvalStatus && in_array($approvalStatus, ['pending', 'approved'])) {
+                $paymentsQuery->where('approval_status', $approvalStatus);
             }
 
             $payments = $paymentsQuery->orderBy('date', 'desc')->get();
@@ -722,6 +796,7 @@ public function generalStore(Request $request): RedirectResponse
                         ->where('type', 'transaction')
                         ->when($fromDate, fn($q) => $q->whereDate('transaction_date', '>=', $fromDate))
                         ->when($toDate, fn($q) => $q->whereDate('transaction_date', '<=', $toDate))
+                        ->when($approvalStatus, fn($q) => $q->where('approval_status', $approvalStatus))
                         ->orderBy('transaction_date', 'desc')
                         ->get()
                         ->map(fn($item) => (object)[
@@ -738,6 +813,7 @@ public function generalStore(Request $request): RedirectResponse
                             'is_payment' => false,
                             'source' => 'daybook',
                             'amount_class' => 'text-primary',
+                            'approval_status' => $item->approval_status ?? 'pending',
                         ]);
                     
                     $generalEntries = $generalEntries->concat($daybookEntries);
@@ -965,10 +1041,7 @@ public function generalStore(Request $request): RedirectResponse
      */
     public function store(Request $request, $uuid): RedirectResponse
     {
-
-    Log::info('===== store() called - This method might be updating stock =====');
-
-
+        \Log::info('===== store() called =====');
 
         try {
             DB::beginTransaction();
@@ -979,7 +1052,7 @@ public function generalStore(Request $request): RedirectResponse
                 'vendor_id' => $vendor->id,
                 'date' => $request->date,
                 'status' => 'pending',
-                'approval_status' => 'pending', // FIXED: Added approval_status
+                'approval_status' => 'pending',
                 'total_amount' => 0,
             ]);
 
@@ -994,7 +1067,7 @@ public function generalStore(Request $request): RedirectResponse
                         'vendor_id' => $vendor->id,
                         'purchase_price' => $productData['price'],
                         'sale_price' => $productData['sale_price'] ?? 0,
-                        'stock' => 0, // FIXED: Stock is 0 until approval
+                        'stock' => 0,
                     ]);
 
                     if (isset($productData['image']) && $productData['image']->isValid()) {
@@ -1006,7 +1079,6 @@ public function generalStore(Request $request): RedirectResponse
                 } else {
                     $productId = $productData['product_id'];
                     $product = Product::where('id', $productId)->first();
-                    // NO STOCK UPDATE HERE - Stock will be added on approval
                 }
 
                 $bill->billProducts()->create([
@@ -1016,8 +1088,6 @@ public function generalStore(Request $request): RedirectResponse
                     'price' => $productData['price'],
                     'sale_price' => $productData['sale_price'] ?? 0,
                 ]);
-                
-                // NO STOCK HISTORY HERE
 
                 $totalAmount += ($productData['quantity'] * $productData['price']);
             }
@@ -1118,7 +1188,7 @@ public function generalStore(Request $request): RedirectResponse
                         'description' => $description,
                         'vendor_id' => $vendor->id,
                         'purchase_price' => $price,
-                        'stock' => 0, // Stock will be added on approval
+                        'stock' => 0,
                     ]);
                     $productId = $newProduct->id;
                     $targetProduct = $newProduct;
@@ -1240,28 +1310,28 @@ public function generalStore(Request $request): RedirectResponse
         }
     }
 
-  public function list(Request $request)
-{
-    $query = Bill::with('vendor', 'billProducts')
-        ->orderBy('date', 'desc')
-        ->orderBy('id', 'desc');
-    
-    if ($request->filled('from_date')) {
-        $query->whereDate('date', '>=', $request->from_date);
+    public function list(Request $request)
+    {
+        $query = Bill::with('vendor', 'billProducts')
+            ->orderBy('date', 'desc')
+            ->orderBy('id', 'desc');
+        
+        if ($request->filled('from_date')) {
+            $query->whereDate('date', '>=', $request->from_date);
+        }
+        
+        if ($request->filled('to_date')) {
+            $query->whereDate('date', '<=', $request->to_date);
+        }
+        
+        if ($request->filled('approval_status')) {
+            $query->where('approval_status', $request->approval_status);
+        }
+        
+        $bills = $query->paginate(10);
+        
+        return view('admin.pages.vendors.bills.list', compact('bills'));
     }
-    
-    if ($request->filled('to_date')) {
-        $query->whereDate('date', '<=', $request->to_date);
-    }
-    
-    if ($request->filled('approval_status')) {
-        $query->where('approval_status', $request->approval_status);
-    }
-    
-    $bills = $query->paginate(10);
-    
-    return view('admin.pages.vendors.bills.list', compact('bills'));
-}
     
     public function show(string $uuid)
     {
@@ -1295,13 +1365,14 @@ public function generalStore(Request $request): RedirectResponse
         }
     }
     
+    /**
+     * UPDATED: Store Send Payment - PENDING APPROVAL, NO BALANCE UPDATE
+     */
     public function storeSendPayment(SendPaymentRequest $request, $uuid)
     {
         try {
             DB::beginTransaction();
             $vendor = Vendor::where('uuid', $uuid)->firstOrFail();
-
-            $newBalance = $vendor->balance - $request->amount;
 
             $vendorTransaction = VendorTransaction::create([
                 'uuid' => (string) Str::uuid(),
@@ -1310,8 +1381,9 @@ public function generalStore(Request $request): RedirectResponse
                 'send_via' => $request->send_via,
                 'type' => 'payment',
                 'transaction_type' => 'debit',
-                'description' => 'Payment sent to ' . $vendor->company_name,
-                'current_balance' => $newBalance,
+                'approval_status' => 'pending', // PENDING APPROVAL
+                'description' => 'Payment sent to ' . $vendor->company_name . ' (Pending Approval)',
+                'current_balance' => $vendor->balance, // Balance NOT updated yet
                 'vendor_id' => $vendor->id,
             ]);
 
@@ -1334,15 +1406,12 @@ public function generalStore(Request $request): RedirectResponse
                     ]);
                 }
 
-                $newBankBalance = $bank->account_balance - $request->amount;
-                $bank->decrement('account_balance', $request->amount);
-
                 BankTransaction::create([
                     'vendor_transaction_id' => $vendorTransaction->id,
                     'bank_id' => $bank->id,
                     'amount' => $request->amount,
-                    'balance' => $newBankBalance,
-                    'description' => 'Payment to ' . $vendor->company_name,
+                    'balance' => $bank->account_balance,
+                    'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                     'transaction_type' => 'debit',
                 ]);
             } else if ($request->send_via == 'cash') {
@@ -1364,20 +1433,17 @@ public function generalStore(Request $request): RedirectResponse
                     ]);
                 }
 
-                $newCashBalance = $cash->balance - $request->amount;
-                $cash->decrement('balance', $request->amount);
-
                 CashTransaction::create([
                     'vendor_transaction_id' => $vendorTransaction->id,
                     'cash_id' => $cash->id,
                     'amount' => $request->amount,
-                    'balance' => $newCashBalance,
-                    'description' => 'Payment to ' . $vendor->company_name,
+                    'balance' => $cash->balance,
+                    'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                     'transaction_type' => 'debit',
                 ]);
             }
 
-            $vendor->decrement('balance', $request->amount);
+            // NO BALANCE UPDATE HERE - Only after approval
 
             if ($request->hasFile('receipt_images')) {
                 $images = $request->file('receipt_images');
@@ -1395,9 +1461,9 @@ public function generalStore(Request $request): RedirectResponse
             Daybook::create([
                 'transaction_date' => $request->date,
                 'amount' => $request->amount,
-                'description' => 'Payment to ' . $vendor->company_name,
+                'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                 'type' => 'transaction',
-                'status' => 1,
+                'approval_status' => 'pending',
                 'vendor_transaction_id' => $vendorTransaction->id,
             ]);
 
@@ -1405,14 +1471,14 @@ public function generalStore(Request $request): RedirectResponse
 
             return response()->json([
                 'status' => true,
-                'message' => 'Payment sent successfully',
+                'message' => 'Payment request created successfully! Awaiting admin approval.',
             ]);
         } catch (\Throwable $th) {
             Log::error($th->getMessage());
             DB::rollBack();
             return response()->json([
                 'status' => false,
-                'message' => 'Internal server error: ' . $th->getMessage(),
+                'message' => 'Failed to create payment: ' . $th->getMessage(),
             ]);
         }
     }
@@ -1445,10 +1511,11 @@ public function generalStore(Request $request): RedirectResponse
                 'date' => $request->date,
                 'amount' => $request->amount,
                 'send_via' => $request->send_via,
-                'description' => $request->description ?? 'Payment to ' . $vendor->company_name,
+                'description' => $request->description ?? 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                 'type' => 'payment',
                 'transaction_type' => 'debit',
-                'current_balance' => $newVendorBalance,
+                'approval_status' => 'pending',
+                'current_balance' => $vendor->balance,
                 'vendor_id' => $vendor->id,
             ]);
 
@@ -1459,15 +1526,12 @@ public function generalStore(Request $request): RedirectResponse
                     throw new \Exception('Insufficient Bank Balance.');
                 }
 
-                $newBankBalance = $bank->account_balance - $request->amount;
-                $bank->decrement('account_balance', $request->amount);
-
                 BankTransaction::create([
                     'vendor_transaction_id' => $vendorTransaction->id,
                     'bank_id' => $bank->id,
                     'amount' => $request->amount,
-                    'balance' => $newBankBalance,
-                    'description' => 'Payment to ' . $vendor->company_name,
+                    'balance' => $bank->account_balance,
+                    'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                     'transaction_type' => 'debit',
                 ]);
             } else if ($request->send_via == 'cash') {
@@ -1477,20 +1541,17 @@ public function generalStore(Request $request): RedirectResponse
                     throw new \Exception('Insufficient Cash Balance.');
                 }
 
-                $newCashBalance = $cash->balance - $request->amount;
-                $cash->decrement('balance', $request->amount);
-
                 CashTransaction::create([
                     'vendor_transaction_id' => $vendorTransaction->id,
                     'cash_id' => $cash->id,
                     'amount' => $request->amount,
-                    'balance' => $newCashBalance,
-                    'description' => 'Payment to ' . $vendor->company_name,
+                    'balance' => $cash->balance,
+                    'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                     'transaction_type' => 'debit',
                 ]);
             }
 
-            $vendor->decrement('balance', $request->amount);
+            // NO BALANCE UPDATE HERE
 
             if ($request->hasFile('receipt_images')) {
                 foreach ($request->file('receipt_images') as $image) {
@@ -1507,9 +1568,9 @@ public function generalStore(Request $request): RedirectResponse
             Daybook::create([
                 'transaction_date' => $request->date,
                 'amount' => $request->amount,
-                'description' => 'Payment to ' . $vendor->company_name . ' (' . ucfirst($request->send_via) . ')',
+                'description' => 'Payment to ' . $vendor->company_name . ' (' . ucfirst($request->send_via) . ') (Pending Approval)',
                 'type' => 'transaction',
-                'status' => 1,
+                'approval_status' => 'pending',
                 'vendor_transaction_id' => $vendorTransaction->id,
             ]);
 
@@ -1517,7 +1578,7 @@ public function generalStore(Request $request): RedirectResponse
 
             return response()->json([
                 'status' => true,
-                'message' => 'Payment processed successfully for ' . $vendor->company_name,
+                'message' => 'Payment request created successfully! Awaiting admin approval.',
                 'redirect' => route('vendors.view', $vendor->uuid)
             ]);
         } catch (\Exception $e) {
