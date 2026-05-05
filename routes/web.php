@@ -244,6 +244,8 @@ Route::delete('customers/bills/delete/{uuid}', [CustomerBillController::class, '
     Route::post('/bank-deposit', [GeneralTransactionController::class, 'bankDeposit'])->name('bank-deposit.store');
     
     Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
+        Route::get('/{id}', [GeneralTransactionController::class, 'getEntryDetails'])->name('details');
+
 });
 
 

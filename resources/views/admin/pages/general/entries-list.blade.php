@@ -57,7 +57,7 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <h6 class="mb-1 text-muted">Total Transactions</h6>
-                                <h3 class="mb-0 text-info">{{ $entries->count() }}</h3>
+                                <h3 class="mb-0 text-info">{{ $entries->total() }}</h3>
                             </div>
                             <div class="rounded-circle p-3" style="background-color: rgba(13, 202, 240, 0.1);">
                                 <i class="bx bx-transfer-alt fs-2 text-info"></i>
@@ -143,7 +143,7 @@
                     General Entries
                 </h5>
                 <div class="text-muted small">
-                    Total: {{ $entries->total() }} entries
+                    Showing {{ $entries->firstItem() }} to {{ $entries->lastItem() }} of {{ $entries->total() }} entries
                 </div>
             </div>
 
@@ -152,19 +152,32 @@
                 <div class="p-3" style="min-width: 1000px;">
                     {{-- Header Row --}}
                     <div class="entries-grid header-row d-none d-md-grid mb-2 pb-2 border-bottom">
-                        <div class="fw-bold text-muted">Date</div>
+                        <div class="fw-bold text-muted">#</div>
+                        <div class="fw-bold text-muted">Date & Time</div>
                         <div class="fw-bold text-muted">Description</div>
-                        <div class="fw-bold text-muted">Amount</div>
+                        <div class="fw-bold text-muted">Debit</div>
+                        <div class="fw-bold text-muted">Credit</div>
                         <div class="fw-bold text-muted">Status</div>
                         <div class="fw-bold text-muted text-center">Actions</div>
                     </div>
 
                     {{-- Entry Rows --}}
-                    @forelse ($entries as $entry)
+                    @forelse ($entries as $index => $entry)
+                        @php
+                            $isDebit = $entry->debit_type && $entry->debit_id;
+                            $isCredit = $entry->credit_type && $entry->credit_id;
+                            $amount = $entry->amount ?? 0;
+                        @endphp
                         <div class="entries-grid entries-row mb-3 p-3 rounded-3 border bg-white shadow-sm" id="entry-row-{{ $entry->id }}">
-                            {{-- Date Column --}}
+                            {{-- Serial Number --}}
                             <div>
-                                <div class="d-md-none fw-bold text-muted small">Date</div>
+                                <div class="d-md-none fw-bold text-muted small">#</div>
+                                <span class="fw-semibold text-muted">{{ $entries->firstItem() + $index }}</span>
+                            </div>
+                            
+                            {{-- Date & Time Column --}}
+                            <div>
+                                <div class="d-md-none fw-bold text-muted small">Date & Time</div>
                                 <div class="fw-semibold">{{ \Carbon\Carbon::parse($entry->transaction_date)->format('d-M-Y') }}</div>
                                 <div class="small text-muted">{{ \Carbon\Carbon::parse($entry->transaction_date)->format('h:i A') }}</div>
                             </div>
@@ -172,15 +185,31 @@
                             {{-- Description Column --}}
                             <div>
                                 <div class="d-md-none fw-bold text-muted small">Description</div>
-                                <span class="fw-semibold">{{ \Str::limit($entry->description ?? 'N/A', 60) }}</span>
+                                <span class="fw-semibold">{{ \Str::limit($entry->description ?? 'N/A', 50) }}</span>
                             </div>
                             
-                            {{-- Amount Column --}}
+                            {{-- Debit Column --}}
                             <div>
-                                <div class="d-md-none fw-bold text-muted small">Amount</div>
-                                <span class="fw-bold text-primary">
-                                    PKR {{ number_format($entry->amount ?? 0, 2) }}
-                                </span>
+                                <div class="d-md-none fw-bold text-muted small">Debit</div>
+                                @if($isDebit)
+                                    <span class="fw-bold text-danger">
+                                        PKR {{ number_format($amount, 2) }}
+                                    </span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
+                            </div>
+                            
+                            {{-- Credit Column --}}
+                            <div>
+                                <div class="d-md-none fw-bold text-muted small">Credit</div>
+                                @if($isCredit)
+                                    <span class="fw-bold text-success">
+                                        PKR {{ number_format($amount, 2) }}
+                                    </span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
                             </div>
                             
                             {{-- Status Column --}}
@@ -218,9 +247,6 @@
                                         <a class="dropdown-item py-2" href="#" onclick="viewEntry({{ $entry->id }})">
                                             <i class="bx bx-show-alt me-2 text-info"></i> View Details
                                         </a>
-                                        <a class="dropdown-item py-2" href="#" onclick="printEntry({{ $entry->id }})">
-                                            <i class="bx bx-printer me-2 text-secondary"></i> Print
-                                        </a>
                                         @if($isAdmin && $entry->approval_status == 'pending')
                                             <div class="dropdown-divider"></div>
                                             <button type="button" class="dropdown-item py-2 text-success approve-entry-btn" 
@@ -242,12 +268,23 @@
                 </div>
             </div>
 
-            {{-- Pagination --}}
-            @if($entries->total() > $entries->perPage())
-                <div class="card-footer bg-transparent">
+            {{-- Pagination with 10 entries per page --}}
+            @if($entries->total() > 0)
+                <div class="card-footer bg-transparent border-top">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                        <div class="text-muted small">
-                            Showing {{ $entries->firstItem() }} to {{ $entries->lastItem() }} of {{ $entries->total() }} entries
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="text-muted small">
+                                Showing {{ $entries->firstItem() }} to {{ $entries->lastItem() }} of {{ $entries->total() }} entries
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <label class="text-muted small mb-0">Per Page:</label>
+                                <select id="perPageSelect" class="form-select form-select-sm" style="width: 70px;">
+                                    <option value="10" {{ $entries->perPage() == 10 ? 'selected' : '' }}>10</option>
+                                    <option value="25" {{ $entries->perPage() == 25 ? 'selected' : '' }}>25</option>
+                                    <option value="50" {{ $entries->perPage() == 50 ? 'selected' : '' }}>50</option>
+                                    <option value="100" {{ $entries->perPage() == 100 ? 'selected' : '' }}>100</option>
+                                </select>
+                            </div>
                         </div>
                         <div>
                             {{ $entries->appends(request()->input())->links('pagination::bootstrap-5') }}
@@ -290,27 +327,29 @@
     /* CSS Grid Layout */
     .entries-grid {
         display: grid;
-        grid-template-columns: 130px minmax(280px, 1fr) 150px 150px 80px;
-        gap: 16px;
+        grid-template-columns: 60px 120px minmax(250px, 1fr) 110px 110px 130px 70px;
+        gap: 12px;
         align-items: center;
         width: 100%;
     }
     
     /* Description column - allow wrapping */
-    .entries-grid > div:nth-child(2) {
+    .entries-grid > div:nth-child(3) {
         word-break: break-word;
         white-space: normal;
     }
     
-    /* Amount column - keep on one line */
-    .entries-grid > div:nth-child(3) {
-        white-space: nowrap;
+    @media (max-width: 1200px) {
+        .entries-grid {
+            grid-template-columns: 50px 110px minmax(200px, 1fr) 100px 100px 120px 60px;
+            gap: 10px;
+        }
     }
     
     @media (max-width: 992px) {
         .entries-grid {
-            grid-template-columns: 120px minmax(220px, 1fr) 130px 130px 70px;
-            gap: 12px;
+            grid-template-columns: 45px 100px minmax(180px, 1fr) 90px 90px 110px 50px;
+            gap: 8px;
         }
     }
     
@@ -333,6 +372,7 @@
         background-color: #f8f9fa !important;
         transform: translateX(5px);
         border-color: #696cff !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
     
     .dropdown-menu {
@@ -393,7 +433,7 @@
     }
     
     .header-row .fw-bold {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
@@ -416,6 +456,7 @@
     .pagination .page-item.active .page-link {
         background-color: #696cff;
         color: white;
+        box-shadow: 0 2px 8px rgba(105, 108, 255, 0.3);
     }
     
     .pagination .page-item .page-link:hover {
@@ -427,17 +468,36 @@
         color: #a8a8a8;
         pointer-events: none;
     }
+    
+    #perPageSelect {
+        cursor: pointer;
+        border-radius: 8px;
+        border-color: #e9ecef;
+    }
+    
+    #perPageSelect:focus {
+        border-color: #696cff;
+        box-shadow: 0 0 0 0.2rem rgba(105, 108, 255, 0.25);
+    }
 </style>
 
 <script>
 $(document).ready(function() {
     var isAdmin = '{{ auth()->user()->role }}' == 'admin';
     
+    // Per Page Select Change
+    $('#perPageSelect').on('change', function() {
+        var perPage = $(this).val();
+        var currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('per_page', perPage);
+        window.location.href = currentUrl.toString();
+    });
+    
     if (isAdmin) {
         function approveEntry(id, amount) {
             Swal.fire({
                 title: 'Approve Entry?',
-                text: "Amount: PKR " + amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}),
+                html: "Amount: <strong>PKR " + amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + "</strong>",
                 icon: 'question',
                 showCancelButton: true,
                 confirmButtonColor: '#28a745',
@@ -452,7 +512,7 @@ $(document).ready(function() {
                         type: 'POST',
                         data: { _token: '{{ csrf_token() }}' },
                         success: function(response) { 
-                            Swal.fire({ title: 'Approved!', icon: 'success', timer: 1500, showConfirmButton: false }).then(() => location.reload()); 
+                            Swal.fire({ title: 'Approved!', text: response.message, icon: 'success', timer: 1500, showConfirmButton: false }).then(() => location.reload()); 
                         },
                         error: function(xhr) { 
                             let msg = xhr.responseJSON?.message || 'Something went wrong';
@@ -477,36 +537,23 @@ function viewEntry(id) {
     $('#viewModal').modal('show');
     $('#modalContent').html('<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading entry details...</p></div>');
     
-    // You can implement AJAX call here to fetch entry details
-    setTimeout(function() {
-        $('#modalContent').html(`
-            <div class="p-3">
-                <div class="d-flex align-items-center mb-3">
-                    <i class="bx bx-transfer-alt fs-2 me-2 text-info"></i>
-                    <h6 class="mb-0">General Entry Details</h6>
-                </div>
-                <hr>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <strong>Entry ID:</strong> 
-                        <span class="badge bg-label-info">#${id}</span>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <strong>Date:</strong> ${new Date().toLocaleDateString()}
-                    </div>
-                    <div class="col-12 mb-3">
-                        <strong>Description:</strong> 
-                        <p class="mt-1 mb-0">General transaction entry</p>
+    $.ajax({
+        url: '/general-transactions/' + id,
+        type: 'GET',
+        success: function(response) {
+            $('#modalContent').html(response);
+        },
+        error: function() {
+            $('#modalContent').html(`
+                <div class="p-3">
+                    <div class="alert alert-danger">
+                        <i class="bx bx-error me-2"></i>
+                        Failed to load entry details. Please try again.
                     </div>
                 </div>
-            </div>
-        `);
-    }, 500);
-}
-
-// Print entry function
-function printEntry(id) {
-    window.open('/general-transactions/print/' + id, '_blank');
+            `);
+        }
+    });
 }
 </script>
 @endpush
