@@ -88,7 +88,7 @@
             border: 2px solid #000;
             padding: 8px 5px;
             font-size: 12px;
-            vertical-align: top; /* Added to keep long descriptions clean */
+            vertical-align: top;
         }
 
         .col-srno { width: 40px; }
@@ -196,21 +196,41 @@
                     <td>
                         @if ($transaction->type == 'bill' && $transaction->bill)
                             Purchase Bill #{{ $transaction->bill->id }}
+                            @if($transaction->description)
+                                <div class="item-desc">{{ $transaction->description }}</div>
+                            @endif
                         @elseif ($transaction->type == 'payment')
                             Payment Sent {{ $transaction->send_via ? 'via ' . $transaction->send_via : '' }}
-                        @elseif ($transaction->type == 'Balance')
+                            @if($transaction->description)
+                                <div class="item-desc">{{ $transaction->description }}</div>
+                            @endif
+                        @elseif ($transaction->type == 'balance')
                             Opening Balance
+                            @if($transaction->description)
+                                <div class="item-desc">{{ $transaction->description }}</div>
+                            @endif
                         @else
-                            {{ ucfirst($transaction->type) }} - {{ $transaction->description ?? '-' }}
+                            {{ ucfirst($transaction->type) }}
+                            @if($transaction->description)
+                                <div class="item-desc">{{ $transaction->description }}</div>
+                            @endif
                         @endif
                     </td>
+                    <!-- FIXED: DEBIT Column - Shows Payments (Money going OUT from vendor) -->
                     <td class="amount-debit">
-                         {{ ($transaction->type == 'payment' || $transaction->type == 'Balance') ? number_format($transaction->amount, 0) : '' }}
-
+                        @if($transaction->type == 'payment')
+                            {{ number_format($transaction->amount, 0) }}
+                        @else
+                            —
+                        @endif
                     </td>
+                    <!-- FIXED: CREDIT Column - Shows Bills/Purchases (Money coming IN to vendor) -->
                     <td class="amount-credit">
-                        {{ $transaction->type == 'bill' ? number_format($transaction->amount, 0) : '' }}
-
+                        @if($transaction->type == 'bill')
+                            {{ number_format($transaction->amount, 0) }}
+                        @else
+                            —
+                        @endif
                     </td>
                     <td class="dr-cr-cell">
                         {{ $transaction->current_balance < 0 ? 'DR' : 'CR' }}

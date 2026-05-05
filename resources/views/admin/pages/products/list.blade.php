@@ -46,10 +46,10 @@
                                     <i class="bx bx-weight fs-2"></i>
                                 </div>
                             </div>
-                            <div>
+                            <!-- <div>
                                 <span class="text-muted small text-uppercase fw-semibold">Avg Net Weight</span>
                                 <h4 class="fw-bold mt-1 mb-0 text-info">{{ number_format($products->avg('net_weight') ?? 0, 2) }} KG</h4>
-                            </div>
+                            </div> -->
                         </div>
                     </div>
                 </div>
@@ -63,10 +63,10 @@
                                     <i class="bx bx-line-chart fs-2"></i>
                                 </div>
                             </div>
-                            <div>
+                            <!-- <div>
                                 <span class="text-muted small text-uppercase fw-semibold">Avg Price/40kg</span>
                                 <h4 class="fw-bold mt-1 mb-0 text-success">PKR {{ number_format($products->avg('price_40kg') ?? 0, 0) }}</h4>
-                            </div>
+                            </div> -->
                         </div>
                     </div>
                 </div>
