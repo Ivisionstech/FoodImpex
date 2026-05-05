@@ -128,7 +128,7 @@
 
         @media print {
             body { padding: 0; }
-            .transactions-table th { -webkit-print-color-adjust: exact; }
+            .transactions-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
     </style>
 </head>
@@ -137,9 +137,9 @@
     @php
         // LOGO DYNAMIC HANDLING
         $logoSrc = "";
-        $logoPath = public_path('images/Intikhab-logo-scaled-copy-2048x560-1.png');
+        $logoPath = public_path('images/logo.png');
 
-        if(isset($companySettings) && $companySettings->logo) {
+        if(isset($companySettings) && $companySettings && $companySettings->logo) {
             $s_path = storage_path('app/public/' . $companySettings->logo);
             if(file_exists($s_path)) {
                 $logoPath = $s_path;
@@ -165,11 +165,11 @@
     </div>
 
     <div class="statement-title">
-        CUSTOMER ACCOUNTS STATEMENT LEDGER
+        ACCOUNTS STATEMENT LEDGER
     </div>
 
     <div class="customer-details">
-        <div class="party-name">CUSTOMER NAME: {{ strtoupper($customer->name) }}</div>
+        <div class="party-name">CUSTOMER NAME: {{ strtoupper($customer->name ?? 'N/A') }}</div>
         <div class="address">ADDRESS: {{ strtoupper($customer->address ?? 'N/A') }}</div>
         <div style="font-size: 12px; margin-top: 5px;">PHONE: {{ $customer->phone ?? 'N/A' }}</div>
     </div>
@@ -190,53 +190,63 @@
             </tr>
         </thead>
         <tbody>
-            @forelse($customerTransactions as $index => $transaction)
+            @forelse($allTransactions as $index => $transaction)
                 <tr>
                     <td style="text-align: center;">{{ $index + 1 }}</td>
-                    <td style="text-align: center;">{{ $transaction->transaction_date ? \Carbon\Carbon::parse($transaction->transaction_date)->format('d-m-Y') : '-' }}</td>
+                    <td style="text-align: center;">
+                        {{ $transaction->transaction_date ? \Carbon\Carbon::parse($transaction->transaction_date)->format('d-m-Y') : '-' }}
+                    </td>
                     <td>
-                        @if ($transaction->type == 'bill' && $transaction->bill)
-                            Sales Invoice #{{ $transaction->bill->id }}
-                            @if($transaction->bill->billProducts->count() > 0)
-                                <div class="item-desc">
-                                    @foreach($transaction->bill->billProducts->take(2) as $item)
-                                        {{ $item->product->name ?? 'Product' }}{{ !$loop->last ? ', ' : '' }}
-                                    @endforeach
-                                    @if($transaction->bill->billProducts->count() > 2)
-                                        + {{ $transaction->bill->billProducts->count() - 2 }} more
-                                    @endif
-                                </div>
-                            @endif
-                        @elseif ($transaction->type == 'payment')
-                            Payment Received {{ $transaction->receive_via ? 'via ' . ucfirst($transaction->receive_via) : '' }}
+                        @if ($transaction->type == 'bill')
+                            Sales Invoice
                             @if($transaction->description)
                                 <div class="item-desc">{{ $transaction->description }}</div>
                             @endif
+                        @elseif ($transaction->type == 'payment')
+                            Payment Received
+                            @if($transaction->description)
+                                <div class="item-desc">{{ $transaction->description }}</div>
+                            @endif
+                            @if(isset($transaction->method) && $transaction->method)
+                                <div class="item-desc">Via: {{ ucfirst($transaction->method) }}</div>
+                            @endif
                         @elseif ($transaction->type == 'balance')
                             Opening Balance
+                            @if($transaction->description)
+                                <div class="item-desc">{{ $transaction->description }}</div>
+                            @endif
+                        @elseif (in_array($transaction->type, ['general_debit', 'general_credit']))
+                            General Entry
+                            <div class="item-desc">{{ $transaction->description ?? 'Manual entry' }}</div>
+                            @if(isset($transaction->entry_type))
+                                <div class="item-desc">Type: {{ $transaction->entry_type }}</div>
+                            @endif
                         @else
-                            {{ ucfirst($transaction->type) }} - {{ $transaction->description ?? '-' }}
+                            {{ ucfirst($transaction->type) }}
+                            @if($transaction->description)
+                                <div class="item-desc">{{ $transaction->description }}</div>
+                            @endif
                         @endif
                     </td>
                     <td class="amount-debit">
-                        @if($transaction->type == 'bill')
+                        @if(in_array($transaction->type, ['bill', 'general_debit']))
                             {{ number_format($transaction->amount, 0) }}
                         @else
                             —
                         @endif
                     </td>
                     <td class="amount-credit">
-                        @if($transaction->type == 'payment')
+                        @if(in_array($transaction->type, ['payment', 'general_credit']))
                             {{ number_format($transaction->amount, 0) }}
                         @else
                             —
                         @endif
                     </td>
                     <td class="dr-cr-cell">
-                        {{ $transaction->current_balance < 0 ? 'DR' : 'CR' }}
+                        {{ isset($transaction->current_balance) && $transaction->current_balance < 0 ? 'DR' : 'CR' }}
                     </td>
                     <td class="balance">
-                        {{ number_format(abs($transaction->current_balance), 0) }}
+                        {{ isset($transaction->current_balance) ? number_format(abs($transaction->current_balance), 0) : number_format(abs($transaction->amount), 0) }}
                     </td>
                 </tr>
             @empty
@@ -248,7 +258,7 @@
     </table>
 
     <div class="footer">
-        <p>This statement contains {{ $customerTransactions->count() }} transaction(s).</p>
+        <p>This statement contains {{ $allTransactions->count() }} transaction(s).</p>
         <p><strong>{{ $companySettings->name ?? 'Food Impex' }}</strong> - Generated on {{ now()->format('F j, Y \a\t g:i A') }}</p>
     </div>
 

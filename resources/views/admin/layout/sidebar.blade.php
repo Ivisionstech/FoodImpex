@@ -128,18 +128,18 @@
         <li class="menu-item {{ request()->routeIs('products.*') ? 'active open' : '' }}">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-package"></i>
-                <div data-i18n="Products">Stock</div>
+                <div data-i18n="Products">Products</div>
             </a>
             <ul class="menu-sub">
                 <li class="menu-item {{ request()->routeIs('products.list') ? 'active' : '' }}">
                     <a href="{{ route('products.list') }}" class="menu-link">
-                        <div>All Stock</div>
+                        <div>All Products</div>
                     </a>
                 </li>
 
                 <li class="menu-item {{ request()->routeIs('products.create') ? 'active' : '' }}">
                     <a href="{{ route('products.create') }}" class="menu-link">
-                        <div>Add Stock</div>
+                        <div>Add Product</div>
                     </a>
                 </li>
             </ul>
@@ -172,28 +172,32 @@
             </ul>
         </li>
 
-        <!-- General Transactions - Both Admin and Accountant can see -->
+        <!-- General Transactions - Only General Entry and Entries History -->
         <li class="menu-item {{ request()->routeIs('general-transactions.*') ? 'active open' : '' }}">
             <a href="javascript:void(0);" class="menu-link menu-toggle">
                 <i class="menu-icon tf-icons bx bx-transfer-alt"></i>
                 <div data-i18n="General Transactions">General Transactions</div>
             </a>
             <ul class="menu-sub">
-                <li class="menu-item {{ request()->routeIs('general-transactions.index') ? 'active' : '' }}">
-                    <a href="{{ route('general-transactions.index') }}" class="menu-link">
-                        <div>Overview</div>
-                    </a>
-                </li>
-
+                <!-- General Entry - Active -->
                 <li class="menu-item {{ request()->routeIs('general-transactions.general-entry') ? 'active' : '' }}">
                     <a href="{{ route('general-transactions.general-entry') }}" class="menu-link">
                         <div>General Entry</div>
                     </a>
                 </li>
 
+                <!-- Entries History - Active -->
                 <li class="menu-item {{ request()->routeIs('general-transactions.entries-list') ? 'active' : '' }}">
                     <a href="{{ route('general-transactions.entries-list') }}" class="menu-link">
                         <div>Entries History</div>
+                    </a>
+                </li>
+
+                {{-- COMMENTED OUT PAGES - KEEP FOR FUTURE USE --}}
+                {{--
+                <li class="menu-item {{ request()->routeIs('general-transactions.index') ? 'active' : '' }}">
+                    <a href="{{ route('general-transactions.index') }}" class="menu-link">
+                        <div>Overview</div>
                     </a>
                 </li>
 
@@ -220,6 +224,7 @@
                         <div>Bank Deposit</div>
                     </a>
                 </li>
+                --}}
             </ul>
         </li>
 

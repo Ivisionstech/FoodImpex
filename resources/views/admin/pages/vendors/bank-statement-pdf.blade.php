@@ -134,12 +134,12 @@
 </head>
 
 <body>
-    @php
-        // LOGO DYNAMIC HANDLING
+     @php
+        // LOGO DYNAMIC HANDLING - Same as Customer side
         $logoSrc = "";
-        $logoPath = public_path('images/Intikhab-logo-scaled-copy-2048x560-1.png');
+        $logoPath = public_path('images/logo.png');
 
-        if(isset($companySettings) && $companySettings->logo) {
+        if(isset($companySettings) && $companySettings && $companySettings->logo) {
             $s_path = storage_path('app/public/' . $companySettings->logo);
             if(file_exists($s_path)) {
                 $logoPath = $s_path;

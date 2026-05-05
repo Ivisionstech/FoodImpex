@@ -116,11 +116,12 @@ Route::get('payment-details/{uuid}', [VendorBillController::class, 'paymentDetai
         Route::get('receive-payments/list', [CustomerController::class, 'paymentsList'])->name('receive-payment.list');
         Route::get('receive-payment/{uuid}/edit', [CustomerController::class, 'editPayment'])->name('receive-payment.edit');
         Route::put('receive-payment/{uuid}/update', [CustomerController::class, 'updatePayment'])->name('receive-payment.update');
-        Route::delete('receive-payment/{uuid}', [CustomerController::class, 'deletePayment'])->name('receive-payment.delete');
-
-        
+        Route::delete('receive-payment/{uuid}', [CustomerController::class, 'deletePayment'])->name('receive-payment.delete');     
+           
     });
-
+    
+// Customer Payment Approval Route (for received payments)
+Route::post('customers/payments/approve/{uuid}', [CustomerBillController::class, 'approvePayment'])->name('customers.payments.approve');
     // ==================== CUSTOMER BILLS ROUTES ====================
     Route::get('bills/create/{uuid?}', [CustomerBillController::class, 'create'])->name('bills.create');
     Route::get('bills/new-create', [CustomerBillController::class, 'newsalecreate'])->name('new.bills.create');
@@ -136,13 +137,16 @@ Route::get('payment-details/{uuid}', [VendorBillController::class, 'paymentDetai
     Route::get('customers/receive-payment/{uuid}', [CustomerBillController::class, 'receivePayment'])->name('customers.receive-payment');
     Route::post('customers/receive-payment/store/{uuid}', [CustomerBillController::class, 'storeReceivePayment'])->name('customers.receive-payment.store');
     Route::get('customers/receive-payment/{uuid}/show', [CustomerBillController::class, 'showReceivePayment'])->name('customers.receive-payment.show');
-// Customer Bank Statement Route
-Route::get('customers/bank-statement/{uuid}', [CustomerBillController::class, 'bankStatementReport'])->name('customers.bank-statement');
-
+// Customer Bank Statement Routes
+Route::get('customers/bank-statement/{uuid}', [CustomerController::class, 'bankStatement'])->name('customers.bank-statement');
+Route::get('customer-statement-pdf/{uuid}', [CustomerController::class, 'bankStatementPdf'])->name('customers.bank-statement-pdf');
+// Make sure you have this route - it should match the URL you're accessing
+Route::get('customer-statement/{uuid}', [CustomerController::class, 'bankStatement'])->name('customers.bank-statement');
 
     // Customer Bills Approve/Reject Routes
 Route::post('customers/bills/approve/{uuid}', [CustomerBillController::class, 'approveBill'])->name('customers.bills.approve');
 Route::delete('customers/bills/delete/{uuid}', [CustomerBillController::class, 'deleteInvoice'])->name('customers.bills.delete');
+
 
     // ==================== PRODUCTS ROUTES ====================
     Route::prefix('products')->name('products.')->group(function () {
