@@ -15,8 +15,8 @@
                                         </div>
                                     </div>
                                     <div>
-                                        <h5 class="mb-0">Journal Entry</h5>
-                                        <small class="text-muted">Create new journal entry</small>
+                                        <h5 class="mb-0">General Entry</h5>
+                                        <small class="text-muted">Create new General entry</small>
                                     </div>
                                 </div>
                             </div>
@@ -35,9 +35,9 @@
                 <!-- Journal Entries Container -->
                 <div class="card">
                     <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Journal Lines</h5>
+                        <h5 class="mb-0">General Entries</h5>
                         <button type="button" class="btn btn-primary" id="addRowBtn">
-                            <i class="bx bx-plus-circle me-1"></i> Add Line
+                            <i class="bx bx-plus-circle me-1"></i> Add New Entry
                         </button>
                     </div>
                     
@@ -64,7 +64,7 @@
                                             </div>
                                             <hr class="my-2">
                                             <div class="d-flex justify-content-between mt-2">
-                                                <span class="fw-semibold">Difference</span>
+                                                <span class="fw-semibold">Available Balance</span>
                                                 <span class="fw-bold" id="totalDifferenceDisplay">PKR 0.00</span>
                                             </div>
                                         </div>
@@ -207,8 +207,7 @@
         }
         
         .debit-badge {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-            color: white;
+            color: #6c757d;
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 11px;
@@ -217,8 +216,7 @@
         }
         
         .credit-badge {
-            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-            color: white;
+            color: #6c757d
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 11px;
@@ -579,17 +577,17 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label"><span class="debit-badge"><i class="fas fa-arrow-down me-1"></i> DEBIT</span></label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-transparent">PKR</span>
-                                    <input type="number" class="form-control amount-input debit-amount" name="debit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${debitValue}" data-row="${rowId}">
-                                </div>
-                            </div>
-                            <div class="col-md-2">
                                 <label class="form-label"><span class="credit-badge"><i class="fas fa-arrow-up me-1"></i> CREDIT</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-transparent">PKR</span>
                                     <input type="number" class="form-control amount-input credit-amount" name="credit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${creditValue}" data-row="${rowId}">
+                                </div>
+                            </div>
+                             <div class="col-md-2">
+                                <label class="form-label"><span class="debit-badge"><i class="fas fa-arrow-down me-1"></i> DEBIT</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-transparent">PKR</span>
+                                    <input type="number" class="form-control amount-input debit-amount" name="debit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${debitValue}" data-row="${rowId}">
                                 </div>
                             </div>
                             <div class="col-md-3">
