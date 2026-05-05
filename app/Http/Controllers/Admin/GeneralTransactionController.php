@@ -10,6 +10,7 @@ use App\Models\CashTransaction;
 use App\Models\Customer;
 use App\Models\CustomerTransaction;
 use App\Models\Daybook;
+use App\Models\Expense;
 use App\Models\Vendor;
 use App\Models\VendorTransaction;
 use Illuminate\Http\Request;
@@ -72,6 +73,9 @@ class GeneralTransactionController extends Controller
                 case 'cash':
                     $creditAccount = Cash::findOrFail($creditId);
                     break;
+                case 'expense':
+                    $creditAccount = Expense::findOrFail($creditId);
+                    break;
             }
             
             // Get debit account (Money In)
@@ -89,6 +93,9 @@ class GeneralTransactionController extends Controller
                 case 'cash':
                     $debitAccount = Cash::findOrFail($debitId);
                     break;
+                case 'expense':
+                    $debitAccount = Expense::findOrFail($debitId);
+                    break;
             }
             
             // Check credit account balance
@@ -105,6 +112,9 @@ class GeneralTransactionController extends Controller
                     break;
                 case 'cash':
                     $creditBalance = $creditAccount->balance;
+                    break;
+                case 'expense':
+                    $creditBalance = PHP_FLOAT_MAX;
                     break;
             }
             
@@ -164,6 +174,10 @@ class GeneralTransactionController extends Controller
                         'description' => $entry->description,
                     ]);
                     break;
+                    
+                case 'expense':
+                    // Expenses don't have balance to decrement
+                    break;
             }
             
             // Process Debit Account (Money In)
@@ -218,6 +232,10 @@ class GeneralTransactionController extends Controller
                         'description' => $entry->description,
                     ]);
                     break;
+                    
+                case 'expense':
+                    // Expenses don't have balance to increment
+                    break;
             }
             
             // Update entry status to approved
@@ -267,6 +285,8 @@ class GeneralTransactionController extends Controller
                 return $account->name ?? 'Bank';
             case 'cash':
                 return 'Cash Account';
+            case 'expense':
+                return $account->name ?? 'Expense';
             default:
                 return ucfirst($type) . ' Account';
         }
@@ -303,8 +323,9 @@ class GeneralTransactionController extends Controller
             $vendors = Vendor::where('active', 1)->orderBy('company_name')->get();
             $banks = Bank::orderBy('name')->get();
             $cash = Cash::first();
+            $expenses = Expense::orderBy('name')->get();
             
-            return view('admin.pages.general.general-entry', compact('customers', 'vendors', 'banks', 'cash'));
+            return view('admin.pages.general.general-entry', compact('customers', 'vendors', 'banks', 'cash', 'expenses'));
             
         } catch (\Exception $e) {
             \Log::error('Error in generalEntry: ' . $e->getMessage());
@@ -313,134 +334,188 @@ class GeneralTransactionController extends Controller
     }
 
     /**
-     * Store a new general entry (PENDING APPROVAL - No balance updates)
+     * Store a new general entry with multiple rows (PENDING APPROVAL - No balance updates)
      */
     public function storeGeneralEntry(Request $request)
     {
         $request->validate([
             'transaction_date' => 'required|date',
-            'amount' => 'required|numeric|min:0.01',
-            'credit_id' => 'required|string',
-            'debit_id' => 'required|string',
-            'description' => 'nullable|string|max:500',
+            'account_ids' => 'required|array|min:2',
+            'account_ids.*' => 'required|string',
+            'debit_amounts' => 'required|array',
+            'debit_amounts.*' => 'numeric|min:0',
+            'credit_amounts' => 'required|array',
+            'credit_amounts.*' => 'numeric|min:0',
+            'descriptions' => 'nullable|array',
+            'descriptions.*' => 'nullable|string|max:500',
         ]);
 
         try {
             DB::beginTransaction();
 
             $date = $request->transaction_date;
-            $amount = $request->amount;
-            $userDescription = $request->description ?? '';
-
-            // Parse credit account
-            $creditParts = explode('_', $request->credit_id);
-            if (count($creditParts) != 2) {
-                throw new \Exception("Invalid credit account format");
-            }
-            $creditType = $creditParts[0];
-            $creditId = $creditParts[1];
-
-            // Parse debit account
-            $debitParts = explode('_', $request->debit_id);
-            if (count($debitParts) != 2) {
-                throw new \Exception("Invalid debit account format");
-            }
-            $debitType = $debitParts[0];
-            $debitId = $debitParts[1];
-
-            // Validate account types (added 'cash')
-            $validTypes = ['customer', 'vendor', 'bank', 'cash'];
-            if (!in_array($creditType, $validTypes) || !in_array($debitType, $validTypes)) {
-                throw new \Exception("Invalid account type. Must be customer, vendor, bank, or cash.");
-            }
-
-            // Get accounts for validation only (NO BALANCE UPDATE YET)
-            $creditAccount = null;
-            $debitAccount = null;
-
-            switch ($creditType) {
-                case 'customer':
-                    $creditAccount = Customer::findOrFail($creditId);
-                    break;
-                case 'vendor':
-                    $creditAccount = Vendor::findOrFail($creditId);
-                    break;
-                case 'bank':
-                    $creditAccount = Bank::findOrFail($creditId);
-                    break;
-                case 'cash':
-                    $creditAccount = Cash::findOrFail($creditId);
-                    break;
-            }
-
-            switch ($debitType) {
-                case 'customer':
-                    $debitAccount = Customer::findOrFail($debitId);
-                    break;
-                case 'vendor':
-                    $debitAccount = Vendor::findOrFail($debitId);
-                    break;
-                case 'bank':
-                    $debitAccount = Bank::findOrFail($debitId);
-                    break;
-                case 'cash':
-                    $debitAccount = Cash::findOrFail($debitId);
-                    break;
-            }
-
-            // Check if credit account has sufficient balance
-            $creditBalance = 0;
-            switch ($creditType) {
-                case 'customer':
-                    $creditBalance = $creditAccount->balance;
-                    break;
-                case 'vendor':
-                    $creditBalance = $creditAccount->balance;
-                    break;
-                case 'bank':
-                    $creditBalance = $creditAccount->account_balance;
-                    break;
-                case 'cash':
-                    $creditBalance = $creditAccount->balance;
-                    break;
+            $accountIds = $request->account_ids;
+            $debitAmounts = $request->debit_amounts;
+            $creditAmounts = $request->credit_amounts;
+            $descriptions = $request->descriptions ?? [];
+            
+            $totalDebit = array_sum(array_map('floatval', $debitAmounts));
+            $totalCredit = array_sum(array_map('floatval', $creditAmounts));
+            
+            // Validate that total debit equals total credit
+            if ($totalDebit != $totalCredit) {
+                throw new \Exception("Total Debit (PKR " . number_format($totalDebit, 2) . ") must equal Total Credit (PKR " . number_format($totalCredit, 2) . ")");
             }
             
-            if ($creditBalance < $amount) {
-                throw new \Exception("Insufficient balance in credit account. Available: PKR " . number_format($creditBalance, 2));
+            $validTypes = ['customer', 'vendor', 'bank', 'cash', 'expense'];
+            $entries = [];
+            
+            // Process each row
+            for ($i = 0; $i < count($accountIds); $i++) {
+                $accountId = $accountIds[$i];
+                $debitAmount = floatval($debitAmounts[$i] ?? 0);
+                $creditAmount = floatval($creditAmounts[$i] ?? 0);
+                $description = $descriptions[$i] ?? '';
+                
+                if ($debitAmount == 0 && $creditAmount == 0) {
+                    continue;
+                }
+                
+                // Parse account
+                $parts = explode('_', $accountId);
+                if (count($parts) != 2) {
+                    throw new \Exception("Invalid account format at row " . ($i + 1));
+                }
+                
+                $accountType = $parts[0];
+                $accountIdValue = $parts[1];
+                
+                if (!in_array($accountType, $validTypes)) {
+                    throw new \Exception("Invalid account type at row " . ($i + 1) . ". Must be customer, vendor, bank, cash, or expense.");
+                }
+                
+                // Get account for validation
+                $account = null;
+                switch ($accountType) {
+                    case 'customer':
+                        $account = Customer::findOrFail($accountIdValue);
+                        break;
+                    case 'vendor':
+                        $account = Vendor::findOrFail($accountIdValue);
+                        break;
+                    case 'bank':
+                        $account = Bank::findOrFail($accountIdValue);
+                        break;
+                    case 'cash':
+                        $account = Cash::findOrFail($accountIdValue);
+                        break;
+                    case 'expense':
+                        $account = Expense::findOrFail($accountIdValue);
+                        break;
+                }
+                
+                $entries[] = [
+                    'type' => $accountType,
+                    'id' => $accountIdValue,
+                    'debit' => $debitAmount,
+                    'credit' => $creditAmount,
+                    'description' => $description,
+                    'account_name' => $this->getAccountName($accountType, $account)
+                ];
             }
-
-            // Generate description
-            $daybookDescription = $this->generateDescription($userDescription, $creditType, $creditAccount, $debitType, $debitAccount, $amount);
-
-            // Create daybook entry with PENDING status and store account details
-            Daybook::create([
-                'transaction_date' => $date,
-                'amount' => $amount,
-                'type' => 'transaction',
-                'approval_status' => 'pending',
-                'credit_type' => $creditType,
-                'credit_id' => $creditId,
-                'debit_type' => $debitType,
-                'debit_id' => $debitId,
-                'description' => $daybookDescription,
-            ]);
-
+            
+            // Create daybook entries for each journal line
+            foreach ($entries as $entry) {
+                $isCredit = $entry['credit'] > 0;
+                $amount = $isCredit ? $entry['credit'] : $entry['debit'];
+                
+                // For expenses, we don't check balance
+                if ($entry['type'] != 'expense' && $isCredit) {
+                    // Check if credit account has sufficient balance
+                    $creditBalance = 0;
+                    switch ($entry['type']) {
+                        case 'customer':
+                            $customer = Customer::find($entry['id']);
+                            $creditBalance = $customer ? $customer->balance : 0;
+                            break;
+                        case 'vendor':
+                            $vendor = Vendor::find($entry['id']);
+                            $creditBalance = $vendor ? $vendor->balance : 0;
+                            break;
+                        case 'bank':
+                            $bank = Bank::find($entry['id']);
+                            $creditBalance = $bank ? $bank->account_balance : 0;
+                            break;
+                        case 'cash':
+                            $cash = Cash::find($entry['id']);
+                            $creditBalance = $cash ? $cash->balance : 0;
+                            break;
+                    }
+                    
+                    if ($creditBalance < $amount) {
+                        throw new \Exception("Insufficient balance in {$entry['account_name']}. Available: PKR " . number_format($creditBalance, 2));
+                    }
+                }
+                
+                // Generate description
+                $fullDescription = $entry['description'];
+                if ($entry['debit'] > 0) {
+                    $fullDescription .= ($fullDescription ? ' - ' : '') . "Debit entry for {$entry['account_name']}";
+                } else {
+                    $fullDescription .= ($fullDescription ? ' - ' : '') . "Credit entry for {$entry['account_name']}";
+                }
+                
+                // Determine credit/debit types for this entry
+                if ($entry['debit'] > 0) {
+                    // This is a debit entry (money in)
+                    $creditType = null;
+                    $creditId = null;
+                    $debitType = $entry['type'];
+                    $debitId = $entry['id'];
+                } else {
+                    // This is a credit entry (money out)
+                    $creditType = $entry['type'];
+                    $creditId = $entry['id'];
+                    $debitType = null;
+                    $debitId = null;
+                }
+                
+                // Create daybook entry with PENDING status
+                Daybook::create([
+                    'transaction_date' => $date,
+                    'amount' => $amount,
+                    'type' => 'transaction',
+                    'approval_status' => 'pending',
+                    'credit_type' => $creditType,
+                    'credit_id' => $creditId,
+                    'debit_type' => $debitType,
+                    'debit_id' => $debitId,
+                    'description' => $fullDescription,
+                ]);
+            }
+            
             DB::commit();
-
-            return redirect()->route('general-transactions.general-entry')
-                ->with('success', 'General entry created successfully! Awaiting admin approval.');
+            
+            $userRole = auth()->user()->role;
+            if ($userRole == 'admin') {
+                return redirect()->route('general-transactions.index')
+                    ->with('success', 'Journal entry created successfully and approved!');
+            } else {
+                return redirect()->route('general-transactions.general-entry')
+                    ->with('success', 'Journal entry created successfully! Awaiting admin approval.');
+            }
 
         } catch (\Exception $e) {
             DB::rollBack();
             
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Failed to create general entry: ' . $e->getMessage());
+                ->with('error', 'Failed to create journal entry: ' . $e->getMessage());
         }
     }
     
     /**
-     * Get accounts for AJAX request - Updated to include Cash
+     * Get accounts for AJAX request - Updated to include Cash and Expense
      */
     public function getAccounts(Request $request)
     {
@@ -518,6 +593,21 @@ class GeneralTransactionController extends Controller
                 } else {
                     $accounts = [];
                 }
+                break;
+                
+            case 'expense':
+                $accounts = Expense::select('id', 'name')
+                    ->orderBy('name')
+                    ->get()
+                    ->map(function($expense) {
+                        return [
+                            'id' => $expense->id,
+                            'name' => $expense->name,
+                            'display_name' => $expense->name . ' (Expense)',
+                            'balance' => 0,
+                            'type' => 'expense'
+                        ];
+                    });
                 break;
         }
         

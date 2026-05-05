@@ -64,7 +64,7 @@
                                             </div>
                                             <hr class="my-2">
                                             <div class="d-flex justify-content-between mt-2">
-                                                <span class="fw-semibold">Available Balance</span>
+                                                <span class="fw-semibold">Difference</span>
                                                 <span class="fw-bold" id="totalDifferenceDisplay">PKR 0.00</span>
                                             </div>
                                         </div>
@@ -126,7 +126,6 @@
             z-index: 1;
         }
         
-        /* Enhanced Select2 Search Styles */
         .select2-container--bootstrap-5 .select2-selection {
             min-height: 42px;
             border-radius: 0.5rem;
@@ -206,17 +205,8 @@
             box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.15);
         }
         
-        .debit-badge {
+        .debit-badge, .credit-badge {
             color: #6c757d;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
-            display: inline-block;
-        }
-        
-        .credit-badge {
-            color: #6c757d
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 11px;
@@ -276,7 +266,6 @@
             border-color: #dc3545 !important;
         }
         
-        /* Search input styling */
         .select2-search__field {
             font-size: 14px !important;
             padding: 8px 12px !important;
@@ -287,7 +276,6 @@
             font-size: 13px;
         }
         
-        /* Highlight matched text */
         .select2-results__option .highlight {
             background-color: #fff3cd;
             font-weight: bold;
@@ -300,20 +288,15 @@
             let rowCounter = 0;
             let rowData = [];
 
-            // Custom matcher for word search (matches complete words)
             function customMatcher(params, data) {
-                // If there's no search term, return all data
                 if ($.trim(params.term) === '') {
                     return data;
                 }
                 
-                // Get search term and split into words
                 var searchTerm = params.term.toLowerCase().trim();
                 var searchWords = searchTerm.split(/\s+/);
-                
                 var text = data.text.toLowerCase();
                 
-                // Check if all search words are present in the text (AND logic)
                 var matchesAllWords = searchWords.every(function(word) {
                     return text.indexOf(word) !== -1;
                 });
@@ -322,7 +305,6 @@
                     return data;
                 }
                 
-                // Also search in custom data attributes
                 var $option = $(data.element);
                 var customName = ($option.data('name') || '').toLowerCase();
                 var customType = ($option.data('type') || '').toLowerCase();
@@ -341,7 +323,6 @@
                 return null;
             }
             
-            // Highlight matching text in results
             function highlightMatch(text, searchTerm) {
                 if (!searchTerm) return text;
                 
@@ -356,7 +337,6 @@
                 return highlightedText;
             }
             
-            // Format account results with icons, badges, and highlighted search terms
             function formatAccountResult(option, searchTerm) {
                 if (!option.id) {
                     return option.text;
@@ -364,7 +344,6 @@
                 
                 var $option = $(option.element);
                 var type = $option.data('type');
-                var name = $option.data('name');
                 var balance = $option.data('balance');
                 var originalText = option.text;
                 var icon = '';
@@ -396,175 +375,96 @@
                         badge = '';
                 }
                 
-                // Get the display text without HTML
                 var displayText = originalText;
                 var highlightedText = highlightMatch(displayText, searchTerm);
-                
                 var balanceHtml = balance ? `<small class="text-muted ms-2">Balance: PKR ${parseFloat(balance).toLocaleString()}</small>` : '';
                 
-                var $result = $(
-                    `<div class="d-flex align-items-center justify-content-between w-100">
-                        <div>
-                            ${icon} <span>${highlightedText}</span>
-                            ${badge}
-                            ${balanceHtml}
-                        </div>
-                    </div>`
-                );
-                
-                return $result;
+                return $(`<div class="d-flex align-items-center justify-content-between w-100"><div>${icon} <span>${highlightedText}</span>${badge}${balanceHtml}</div></div>`);
             }
             
             function formatAccountSelection(option) {
-                if (!option.id) {
-                    return option.text;
-                }
+                if (!option.id) return option.text;
                 
                 var $option = $(option.element);
                 var type = $option.data('type');
                 var icon = '';
                 
                 switch(type) {
-                    case 'customer':
-                        icon = '<i class="fas fa-users me-2" style="color: #0d6efd;"></i>';
-                        break;
-                    case 'vendor':
-                        icon = '<i class="fas fa-truck me-2" style="color: #198754;"></i>';
-                        break;
-                    case 'bank':
-                        icon = '<i class="fas fa-university me-2" style="color: #6f42c1;"></i>';
-                        break;
-                    case 'cash':
-                        icon = '<i class="fas fa-money-bill-wave me-2" style="color: #fd7e14;"></i>';
-                        break;
-                    case 'expense':
-                        icon = '<i class="fas fa-receipt me-2" style="color: #dc3545;"></i>';
-                        break;
-                    default:
-                        icon = '<i class="fas fa-building me-2"></i>';
+                    case 'customer': icon = '<i class="fas fa-users me-2" style="color: #0d6efd;"></i>'; break;
+                    case 'vendor': icon = '<i class="fas fa-truck me-2" style="color: #198754;"></i>'; break;
+                    case 'bank': icon = '<i class="fas fa-university me-2" style="color: #6f42c1;"></i>'; break;
+                    case 'cash': icon = '<i class="fas fa-money-bill-wave me-2" style="color: #fd7e14;"></i>'; break;
+                    case 'expense': icon = '<i class="fas fa-receipt me-2" style="color: #dc3545;"></i>'; break;
+                    default: icon = '<i class="fas fa-building me-2"></i>';
                 }
                 
                 return $(`<span>${icon} ${option.text}</span>`);
             }
 
-            // Initialize Select2 with enhanced search
-            function initSelect2(element, searchTerm = '') {
+            function initSelect2(element) {
                 if (element && !$(element).data('select2')) {
                     $(element).select2({
                         theme: 'bootstrap-5',
                         width: '100%',
-                        placeholder: '🔍 Search by name (e.g., "Zain", "John", "Utility")...',
+                        placeholder: '🔍 Search by name...',
                         allowClear: true,
                         dropdownParent: $(element).closest('.journal-entry-row'),
                         matcher: customMatcher,
                         templateResult: function(option) {
-                            var searchInput = $(element).data('select2').dropdown.$search;
+                            var searchInput = $(element).data('select2')?.dropdown?.$search;
                             var currentSearchTerm = searchInput ? searchInput.val() : '';
                             return formatAccountResult(option, currentSearchTerm);
                         },
-                        templateSelection: formatAccountSelection,
-                        language: {
-                            searching: function() {
-                                return 'Searching accounts...';
-                            },
-                            noResults: function() {
-                                return '<div class="text-center p-3"><i class="fas fa-search me-2"></i> No accounts found matching your search. Try "Zain", "Utility", "Bank", etc.</div>';
-                            },
-                            inputTooShort: function() {
-                                return 'Type at least 1 character to search';
-                            }
-                        }
+                        templateSelection: formatAccountSelection
                     });
                 }
             }
 
-            // Sync date field
             $('#transaction_date').on('change', function() {
                 $('#hidden_transaction_date').val($(this).val());
             });
 
-            // Create new journal entry row
             function createNewRow(rowId, isFirst = false, savedData = null) {
                 let accountValue = savedData ? savedData.account : '';
                 let debitValue = savedData ? savedData.debit : '0';
                 let creditValue = savedData ? savedData.credit : '0';
                 let descriptionValue = savedData ? savedData.description : '';
                 
-                let optionsHtml = `
-                    <option value="">Search by name (e.g., "Zain", "Utility", "Bank")...</option>
-                    <optgroup label="CUSTOMERS">
-                        @if(isset($customers) && $customers->count() > 0)
-                            @foreach ($customers as $customer)
-                                <option value="customer_{{ $customer->id }}" data-type="customer" data-name="{{ $customer->name }}" data-balance="{{ $customer->balance ?? 0 }}" ${accountValue == 'customer_{{ $customer->id }}' ? 'selected' : ''}>
-                                    <i class="fas fa-users"></i> {{ $customer->name }} (Customer) - Balance: PKR {{ number_format($customer->balance ?? 0, 2) }}
-                                </option>
-                            @endforeach
-                        @endif
-                    </optgroup>
-                    <optgroup label="VENDORS">
-                        @if(isset($vendors) && $vendors->count() > 0)
-                            @foreach ($vendors as $vendor)
-                                <option value="vendor_{{ $vendor->id }}" data-type="vendor" data-name="{{ $vendor->company_name }}" data-balance="{{ $vendor->balance ?? 0 }}" ${accountValue == 'vendor_{{ $vendor->id }}' ? 'selected' : ''}>
-                                    <i class="fas fa-truck"></i> {{ $vendor->company_name }} (Vendor) - Balance: PKR {{ number_format($vendor->balance ?? 0, 2) }}
-                                </option>
-                            @endforeach
-                        @endif
-                    </optgroup>
-                    <optgroup label="BANKS">
-                        @if(isset($banks) && $banks->count() > 0)
-                            @foreach ($banks as $bank)
-                                @php
-                                    $balance = property_exists($bank, 'account_balance') ? $bank->account_balance : (property_exists($bank, 'balance') ? $bank->balance : 0);
-                                @endphp
-                                <option value="bank_{{ $bank->id }}" data-type="bank" data-name="{{ $bank->name }}" data-balance="{{ $balance }}" ${accountValue == 'bank_{{ $bank->id }}' ? 'selected' : ''}>
-                                    <i class="fas fa-university"></i> {{ $bank->name }} (Bank) - Balance: PKR {{ number_format($balance, 2) }}
-                                </option>
-                            @endforeach
-                        @endif
-                    </optgroup>
-                    <optgroup label="CASH">
-                        @if(isset($cash) && $cash)
-                            <option value="cash_{{ $cash->id }}" data-type="cash" data-name="Cash Account" data-balance="{{ $cash->balance ?? 0 }}" ${accountValue == 'cash_{{ $cash->id }}' ? 'selected' : ''}>
-                                <i class="fas fa-money-bill-wave"></i> Cash Account (Cash) - Balance: PKR {{ number_format($cash->balance ?? 0, 2) }}
-                            </option>
-                        @endif
-                    </optgroup>
-                    <optgroup label="EXPENSES">
-                        <!-- Dynamic Expenses from Database -->
-                        @if(isset($expenses) && $expenses->count() > 0)
-                            @foreach ($expenses as $expense)
-                                <option value="expense_{{ $expense->id }}" data-type="expense" data-name="{{ $expense->name }}" data-balance="0" ${accountValue == 'expense_{{ $expense->id }}' ? 'selected' : ''}>
-                                    <i class="fas fa-receipt"></i> {{ $expense->name }} (Expense)
-                                </option>
-                            @endforeach
-                        @endif
-                        <!-- Predefined Expense Options -->
-                        <option value="expense_utility" data-type="expense" data-name="Utility Expense" data-balance="0" ${accountValue == 'expense_utility' ? 'selected' : ''}>
-                            <i class="fas fa-bolt"></i> Utility Expense
-                        </option>
-                        <option value="expense_rent" data-type="expense" data-name="Rent Expense" data-balance="0" ${accountValue == 'expense_rent' ? 'selected' : ''}>
-                            <i class="fas fa-building"></i> Rent Expense
-                        </option>
-                        <option value="expense_salary" data-type="expense" data-name="Salary Expense" data-balance="0" ${accountValue == 'expense_salary' ? 'selected' : ''}>
-                            <i class="fas fa-users"></i> Salary Expense
-                        </option>
-                        <option value="expense_stationery" data-type="expense" data-name="Stationery Expense" data-balance="0" ${accountValue == 'expense_stationery' ? 'selected' : ''}>
-                            <i class="fas fa-pen"></i> Stationery Expense
-                        </option>
-                        <option value="expense_travel" data-type="expense" data-name="Travel Expense" data-balance="0" ${accountValue == 'expense_travel' ? 'selected' : ''}>
-                            <i class="fas fa-plane"></i> Travel Expense
-                        </option>
-                        <option value="expense_maintenance" data-type="expense" data-name="Maintenance Expense" data-balance="0" ${accountValue == 'expense_maintenance' ? 'selected' : ''}>
-                            <i class="fas fa-tools"></i> Maintenance Expense
-                        </option>
-                        <option value="expense_marketing" data-type="expense" data-name="Marketing Expense" data-balance="0" ${accountValue == 'expense_marketing' ? 'selected' : ''}>
-                            <i class="fas fa-chart-line"></i> Marketing Expense
-                        </option>
-                        <option value="expense_insurance" data-type="expense" data-name="Insurance Expense" data-balance="0" ${accountValue == 'expense_insurance' ? 'selected' : ''}>
-                            <i class="fas fa-shield-alt"></i> Insurance Expense
-                        </option>
-                    </optgroup>
-                `;
+                let customersHtml = '';
+                @if(isset($customers) && $customers->count() > 0)
+                    @foreach ($customers as $customer)
+                        customersHtml += `<option value="customer_{{ $customer->id }}" data-type="customer" data-name="{{ $customer->name }}" data-balance="{{ $customer->balance ?? 0 }}" ${accountValue == 'customer_{{ $customer->id }}' ? 'selected' : ''}><i class="fas fa-users"></i> {{ $customer->name }} (Customer) - Balance: PKR {{ number_format($customer->balance ?? 0, 2) }}</option>`;
+                    @endforeach
+                @endif
+                
+                let vendorsHtml = '';
+                @if(isset($vendors) && $vendors->count() > 0)
+                    @foreach ($vendors as $vendor)
+                        vendorsHtml += `<option value="vendor_{{ $vendor->id }}" data-type="vendor" data-name="{{ $vendor->company_name }}" data-balance="{{ $vendor->balance ?? 0 }}" ${accountValue == 'vendor_{{ $vendor->id }}' ? 'selected' : ''}><i class="fas fa-truck"></i> {{ $vendor->company_name }} (Vendor) - Balance: PKR {{ number_format($vendor->balance ?? 0, 2) }}</option>`;
+                    @endforeach
+                @endif
+                
+                let banksHtml = '';
+                @if(isset($banks) && $banks->count() > 0)
+                    @foreach ($banks as $bank)
+                        @php
+                            $balance = property_exists($bank, 'account_balance') ? $bank->account_balance : (property_exists($bank, 'balance') ? $bank->balance : 0);
+                        @endphp
+                        banksHtml += `<option value="bank_{{ $bank->id }}" data-type="bank" data-name="{{ $bank->name }}" data-balance="{{ $balance }}" ${accountValue == 'bank_{{ $bank->id }}' ? 'selected' : ''}><i class="fas fa-university"></i> {{ $bank->name }} (Bank) - Balance: PKR {{ number_format($balance, 2) }}</option>`;
+                    @endforeach
+                @endif
+                
+                let cashHtml = '';
+                @if(isset($cash) && $cash)
+                    cashHtml += `<option value="cash_{{ $cash->id }}" data-type="cash" data-name="Cash Account" data-balance="{{ $cash->balance ?? 0 }}" ${accountValue == 'cash_{{ $cash->id }}' ? 'selected' : ''}><i class="fas fa-money-bill-wave"></i> Cash Account (Cash) - Balance: PKR {{ number_format($cash->balance ?? 0, 2) }}</option>`;
+                @endif
+                
+                let expensesHtml = '';
+                @if(isset($expenses) && $expenses->count() > 0)
+                    @foreach ($expenses as $expense)
+                        expensesHtml += `<option value="expense_{{ $expense->id }}" data-type="expense" data-name="{{ $expense->name }}" data-balance="0" ${accountValue == 'expense_{{ $expense->id }}' ? 'selected' : ''}><i class="fas fa-receipt"></i> {{ $expense->name }} (Expense)</option>`;
+                    @endforeach
+                @endif
                 
                 return `
                     <div class="journal-entry-row" data-row-id="${rowId}">
@@ -572,8 +472,13 @@
                         <div class="row g-3 align-items-end">
                             <div class="col-md-4">
                                 <label class="form-label"><i class="fas fa-search me-1"></i> Account</label>
-                                <select class="form-select account-select select2-search" name="account_ids[]" data-row="${rowId}" style="width: 100%;">
-                                    ${optionsHtml}
+                                <select class="form-select account-select" name="account_ids[]" data-row="${rowId}" style="width: 100%;">
+                                    <option value="">Search by name...</option>
+                                    <optgroup label="CUSTOMERS">${customersHtml}</optgroup>
+                                    <optgroup label="VENDORS">${vendorsHtml}</optgroup>
+                                    <optgroup label="BANKS">${banksHtml}</optgroup>
+                                    <optgroup label="CASH">${cashHtml}</optgroup>
+                                    <optgroup label="EXPENSES">${expensesHtml}</optgroup>
                                 </select>
                             </div>
                             <div class="col-md-2">
@@ -583,7 +488,7 @@
                                     <input type="number" class="form-control amount-input credit-amount" name="credit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${creditValue}" data-row="${rowId}">
                                 </div>
                             </div>
-                             <div class="col-md-2">
+                            <div class="col-md-2">
                                 <label class="form-label"><span class="debit-badge"><i class="fas fa-arrow-down me-1"></i> DEBIT</span></label>
                                 <div class="input-group">
                                     <span class="input-group-text bg-transparent">PKR</span>
@@ -604,7 +509,6 @@
                 `;
             }
 
-            // Save current row data
             function saveCurrentData() {
                 rowData = [];
                 $('.journal-entry-row').each(function(index) {
@@ -618,7 +522,6 @@
                 });
             }
 
-            // Restore row data
             function restoreData() {
                 $('.journal-entry-row').each(function(index) {
                     let row = $(this);
@@ -633,83 +536,51 @@
                 });
             }
 
-            // Render all rows
             function renderRows() {
                 let container = $('#journalEntriesContainer');
-                
-                if ($('.journal-entry-row').length > 0) {
-                    saveCurrentData();
-                }
-                
+                if ($('.journal-entry-row').length > 0) saveCurrentData();
                 container.empty();
-                
                 for (let i = 0; i <= rowCounter; i++) {
                     let savedData = rowData[i] || null;
                     let rowHtml = createNewRow(i, i === 0, savedData);
                     container.append(rowHtml);
                 }
-                
-                $('.account-select').each(function() {
-                    initSelect2(this);
-                });
-                
-                if (rowData.length > 0) {
-                    restoreData();
-                }
-                
+                $('.account-select').each(function() { initSelect2(this); });
+                if (rowData.length > 0) restoreData();
                 calculateTotals();
             }
 
-            // Add new row
             $('#addRowBtn').click(function(e) {
                 e.preventDefault();
                 saveCurrentData();
                 rowCounter++;
-                
-                let newRowId = rowCounter;
-                let newRowHtml = createNewRow(newRowId, false, null);
+                let newRowHtml = createNewRow(rowCounter, false, null);
                 $('#journalEntriesContainer').append(newRowHtml);
-                
-                initSelect2($(`.journal-entry-row[data-row-id="${newRowId}"] .account-select`));
-                
+                initSelect2($(`.journal-entry-row[data-row-id="${rowCounter}"] .account-select`));
                 $('.journal-entry-row').each(function(index) {
                     $(this).find('.entry-number').text(`Entry ${index + 1}`);
                     $(this).attr('data-row-id', index);
                 });
-                
                 calculateTotals();
-                
-                $('html, body').animate({
-                    scrollTop: $(document).height()
-                }, 500);
             });
 
-            // Remove row
             $(document).on('click', '.remove-row-btn', function(e) {
                 e.preventDefault();
                 let rowId = $(this).data('row');
                 $(`.journal-entry-row[data-row-id="${rowId}"]`).remove();
-                
                 $('.journal-entry-row').each(function(index) {
                     $(this).find('.entry-number').text(`Entry ${index + 1}`);
                     $(this).attr('data-row-id', index);
                 });
-                
                 rowCounter = $('.journal-entry-row').length - 1;
                 calculateTotals();
             });
 
-            // Handle debit/credit input
             $(document).on('input', '.debit-amount', function() {
                 let row = $(this).closest('.journal-entry-row');
                 let debitVal = parseFloat($(this).val()) || 0;
                 let creditInput = row.find('.credit-amount');
-                let creditVal = parseFloat(creditInput.val()) || 0;
-                
-                if (debitVal > 0 && creditVal > 0) {
-                    creditInput.val(0);
-                }
-                
+                if (debitVal > 0 && parseFloat(creditInput.val()) > 0) creditInput.val(0);
                 calculateTotals();
             });
 
@@ -717,113 +588,31 @@
                 let row = $(this).closest('.journal-entry-row');
                 let creditVal = parseFloat($(this).val()) || 0;
                 let debitInput = row.find('.debit-amount');
-                let debitVal = parseFloat(debitInput.val()) || 0;
-                
-                if (creditVal > 0 && debitVal > 0) {
-                    debitInput.val(0);
-                }
-                
+                if (creditVal > 0 && parseFloat(debitInput.val()) > 0) debitInput.val(0);
                 calculateTotals();
             });
 
-            // Calculate totals
             function calculateTotals() {
-                let totalDebit = 0;
-                let totalCredit = 0;
+                let totalDebit = 0, totalCredit = 0;
+                $('.debit-amount').each(function() { totalDebit += parseFloat($(this).val()) || 0; });
+                $('.credit-amount').each(function() { totalCredit += parseFloat($(this).val()) || 0; });
                 
-                $('.debit-amount').each(function() {
-                    let val = parseFloat($(this).val()) || 0;
-                    if (val > 0) {
-                        totalDebit += val;
-                    }
-                });
-                
-                $('.credit-amount').each(function() {
-                    let val = parseFloat($(this).val()) || 0;
-                    if (val > 0) {
-                        totalCredit += val;
-                    }
-                });
-                
-                $('#totalDebitDisplay').text('PKR ' + totalDebit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
-                $('#totalCreditDisplay').text('PKR ' + totalCredit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                $('#totalDebitDisplay').text('PKR ' + totalDebit.toLocaleString('en-US', {minimumFractionDigits: 2}));
+                $('#totalCreditDisplay').text('PKR ' + totalCredit.toLocaleString('en-US', {minimumFractionDigits: 2}));
                 
                 let difference = totalDebit - totalCredit;
-                let differenceElement = $('#totalDifferenceDisplay');
-                let isBalanced = (difference === 0);
+                let isBalanced = difference === 0;
                 
-                if (difference === 0) {
-                    differenceElement.html('<span class="text-success"><i class="fas fa-check-circle me-1"></i> Balanced: PKR ' + Math.abs(difference).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>');
+                if (isBalanced) {
+                    $('#totalDifferenceDisplay').html('<span class="text-success"><i class="fas fa-check-circle me-1"></i> Balanced: PKR 0.00</span>');
                     $('#submitBtn').prop('disabled', false);
-                } else if (difference > 0) {
-                    differenceElement.html('<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Debit exceeds Credit by PKR ' + Math.abs(difference).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>');
-                    $('#submitBtn').prop('disabled', true);
                 } else {
-                    differenceElement.html('<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Credit exceeds Debit by PKR ' + Math.abs(difference).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>');
+                    $('#totalDifferenceDisplay').html('<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Difference: PKR ' + Math.abs(difference).toLocaleString('en-US', {minimumFractionDigits: 2}) + '</span>');
                     $('#submitBtn').prop('disabled', true);
                 }
-                
-                return { totalDebit, totalCredit, difference, isBalanced };
             }
 
-            // Form validation
-            $('#generalEntryForm').submit(function(e) {
-                let { totalDebit, totalCredit, difference, isBalanced } = calculateTotals();
-                
-                if (totalDebit === 0 && totalCredit === 0) {
-                    alert('❌ Please add at least one journal entry with amount');
-                    e.preventDefault();
-                    return false;
-                }
-                
-                if (!isBalanced) {
-                    alert('❌ Journal Entry is not balanced!\n\nTotal Debit: PKR ' + totalDebit.toFixed(2) + '\nTotal Credit: PKR ' + totalCredit.toFixed(2) + '\nDifference: PKR ' + Math.abs(difference).toFixed(2) + '\n\nPlease adjust entries to balance Debit and Credit.');
-                    e.preventDefault();
-                    return false;
-                }
-                
-                let hasEmptyAccount = false;
-                $('.account-select').each(function() {
-                    if (!$(this).val()) {
-                        hasEmptyAccount = true;
-                        $(this).addClass('is-invalid');
-                    } else {
-                        $(this).removeClass('is-invalid');
-                    }
-                });
-                
-                if (hasEmptyAccount) {
-                    alert('❌ Please select an account for all rows');
-                    e.preventDefault();
-                    return false;
-                }
-                
-                let invalidRows = false;
-                $('.journal-entry-row').each(function(index) {
-                    let debit = parseFloat($(this).find('.debit-amount').val()) || 0;
-                    let credit = parseFloat($(this).find('.credit-amount').val()) || 0;
-                    
-                    if (debit === 0 && credit === 0) {
-                        alert('❌ Row ' + (index + 1) + ' must have either Debit or Credit amount');
-                        invalidRows = true;
-                    }
-                });
-                
-                if (invalidRows) {
-                    e.preventDefault();
-                    return false;
-                }
-            });
-
-            // Initial render
             renderRows();
         });
     </script>
-    
-    @push('scripts')
-    <script>
-        // Pass data from PHP to JavaScript
-        var expensesData = @json($expenses ?? []);
-    </script>
-    @endpush
 @endsection
