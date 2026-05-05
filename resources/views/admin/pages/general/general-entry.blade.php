@@ -1,215 +1,86 @@
 @extends('admin.layout.master')
 @section('content')
     <div class="container-xxl flex-grow-1 container-p-y">
-        <h4 class="fw-bold py-3 mb-4">
-            <span class="text-muted fw-light">Dashboard /</span>
-            <a class="text-muted fw-light" href="{{ route('general-transactions.index') }}">General Transactions</a> /
-            General Entry
-        </h4>
-
-        @if(session('error'))
-            <div class="alert alert-danger">
-                {{ session('error') }}
-            </div>
-        @endif
-
-        @if($errors->any())
-            <div class="alert alert-danger">
-                <ul class="mb-0">
-                    @foreach($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
-
         <div class="row">
-            <div class="col-lg-8 col-md-10 col-sm-12 mx-auto">
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">
-                            <i class="bx bx-transfer-alt me-2"></i>
-                            General Entry
-                        </h5>
+            <div class="col-12">
+                <!-- Journal Entry Header -->
+                <div class="card mb-4">
+                    <div class="card-body py-3">
+                        <div class="row align-items-center">
+                            <div class="col-md-3">
+                                <div class="d-flex align-items-center">
+                                    <div class="me-3">
+                                        <div class="avatar avatar-sm bg-label-primary rounded">
+                                            <i class="bx bx-book-open fs-4"></i>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h5 class="mb-0">Journal Entry</h5>
+                                        <small class="text-muted">Create new journal entry</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-9">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label text-muted mb-1">Entry Date</label>
+                                        <input type="date" class="form-control form-control-lg" id="transaction_date" name="transaction_date" value="{{ date('Y-m-d') }}" required>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                </div>
+
+                <!-- Journal Entries Container -->
+                <div class="card">
+                    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Journal Lines</h5>
+                        <button type="button" class="btn btn-primary" id="addRowBtn">
+                            <i class="bx bx-plus-circle me-1"></i> Add Line
+                        </button>
+                    </div>
+                    
                     <div class="card-body">
-                        <form action="{{ route('general-transactions.general-entry.store') }}"
-                            method="POST">
+                        <form action="{{ route('general-transactions.general-entry.store') }}" method="POST" id="generalEntryForm">
                             @csrf
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label class="form-label" for="credit_id">Credit (Money Out) <span class="text-danger">*</span></label>
-                                    <select class="form-control @error('credit_id') is-invalid @enderror" id="credit_id"
-                                        name="credit_id" required>
-                                        <option value="">Select Credit Account</option>
-                                        @if(isset($customers) && $customers->count() > 0)
-                                        <optgroup label="CUSTOMERS">
-                                            @foreach ($customers as $customer)
-                                                <option value="customer_{{ $customer->id }}" data-name="{{ $customer->name ?? 'N/A' }}" data-type="Customer" data-balance="{{ $customer->balance ?? 0 }}">
-                                                    {{ $customer->name ?? 'N/A' }} (Customer) - Bal: PKR {{ number_format($customer->balance ?? 0, 2) }}
-                                                </option>
-                                            @endforeach
-                                        </optgroup>
-                                        @endif
+                            
+                            <input type="hidden" name="transaction_date" id="hidden_transaction_date" value="{{ date('Y-m-d') }}">
+                            
+                            <div id="journalEntriesContainer"></div>
 
-                                        @if(isset($vendors) && $vendors->count() > 0)
-                                        <optgroup label="VENDORS">
-                                            @foreach ($vendors as $vendor)
-                                                <option value="vendor_{{ $vendor->id }}" data-name="{{ $vendor->company_name ?? 'N/A' }}" data-type="Vendor" data-balance="{{ $vendor->balance ?? 0 }}">
-                                                    {{ $vendor->company_name ?? 'N/A' }} (Vendor) - Bal: PKR {{ number_format($vendor->balance ?? 0, 2) }}
-                                                </option>
-                                            @endforeach
-                                        </optgroup>
-                                        @endif
-
-                                        @if(isset($banks) && $banks->count() > 0)
-                                        <optgroup label="BANKS">
-                                            @foreach ($banks as $bank)
-                                                @php
-                                                    $balance = property_exists($bank, 'account_balance') ? $bank->account_balance : (property_exists($bank, 'balance') ? $bank->balance : 0);
-                                                @endphp
-                                                <option value="bank_{{ $bank->id }}" data-name="{{ $bank->name ?? 'N/A' }}" data-type="Bank" data-balance="{{ $balance }}">
-                                                    {{ $bank->name ?? 'N/A' }} (Bank) - Bal: PKR {{ number_format($balance, 2) }}
-                                                </option>
-                                            @endforeach
-                                        </optgroup>
-                                        @endif
-                                    </select>
-                                    @error('credit_id')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label" for="debit_id">Debit (Money In) <span class="text-danger">*</span></label>
-                                    <select class="form-control @error('debit_id') is-invalid @enderror" id="debit_id"
-                                        name="debit_id" required>
-                                        <option value="">Select Debit Account</option>
-                                        @if(isset($customers) && $customers->count() > 0)
-                                        <optgroup label="CUSTOMERS">
-                                            @foreach ($customers as $customer)
-                                                <option value="customer_{{ $customer->id }}" data-name="{{ $customer->name ?? 'N/A' }}" data-type="Customer" data-balance="{{ $customer->balance ?? 0 }}">
-                                                    {{ $customer->name ?? 'N/A' }} (Customer) - Bal: PKR {{ number_format($customer->balance ?? 0, 2) }}
-                                                </option>
-                                            @endforeach
-                                        </optgroup>
-                                        @endif
-
-                                        @if(isset($vendors) && $vendors->count() > 0)
-                                        <optgroup label="VENDORS">
-                                            @foreach ($vendors as $vendor)
-                                                <option value="vendor_{{ $vendor->id }}" data-name="{{ $vendor->company_name ?? 'N/A' }}" data-type="Vendor" data-balance="{{ $vendor->balance ?? 0 }}">
-                                                    {{ $vendor->company_name ?? 'N/A' }} (Vendor) - Bal: PKR {{ number_format($vendor->balance ?? 0, 2) }}
-                                                </option>
-                                            @endforeach
-                                        </optgroup>
-                                        @endif
-
-                                        @if(isset($banks) && $banks->count() > 0)
-                                        <optgroup label="BANKS">
-                                            @foreach ($banks as $bank)
-                                                @php
-                                                    $balance = property_exists($bank, 'account_balance') ? $bank->account_balance : (property_exists($bank, 'balance') ? $bank->balance : 0);
-                                                @endphp
-                                                <option value="bank_{{ $bank->id }}" data-name="{{ $bank->name ?? 'N/A' }}" data-type="Bank" data-balance="{{ $balance }}">
-                                                    {{ $bank->name ?? 'N/A' }} (Bank) - Bal: PKR {{ number_format($balance, 2) }}
-                                                </option>
-                                            @endforeach
-                                        </optgroup>
-                                        @endif
-                                    </select>
-                                    @error('debit_id')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                            </div>
-
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label class="form-label" for="amount">Transfer Amount <span
-                                            class="text-danger">*</span></label>
-                                    <input type="number" class="form-control @error('amount') is-invalid @enderror"
-                                        id="amount" name="amount" step="0.01" min="0.01" value="{{ old('amount') }}" required />
-                                    @error('amount')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                    <small class="text-muted">Available balance will be shown after selecting credit account</small>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label" for="transaction_date">Transaction Date <span
-                                            class="text-danger">*</span></label>
-                                    <input type="datetime-local"
-                                        class="form-control @error('transaction_date') is-invalid @enderror"
-                                        id="transaction_date" name="transaction_date" value="{{ old('transaction_date', date('Y-m-d\TH:i')) }}"
-                                        required />
-                                    @error('transaction_date')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                            </div>
-
-                            <div class="row mb-3">
-                                <div class="col-12">
-                                    <label class="form-label" for="description">Description (Optional)</label>
-                                    <textarea class="form-control @error('description') is-invalid @enderror" id="description" name="description"
-                                        rows="3" placeholder="Enter description for this transfer">{{ old('description') }}</textarea>
-                                    <small class="text-muted" id="autoDescriptionHint">A description will be automatically generated based on selected accounts</small>
-                                    @error('description')
-                                        <div class="invalid-feedback">{{ $message }}</div>
-                                    @enderror
-                                </div>
-                            </div>
-
-                            <!-- Preview of how this entry will appear -->
-                            <div class="row mb-3" id="preview-section" style="display: none;">
-                                <div class="col-12">
-                                    <div class="card bg-light">
-                                        <div class="card-header py-2">
-                                            <h6 class="mb-0">Preview</h6>
-                                        </div>
-                                        <div class="card-body py-2">
-                                            <div class="row">
-                                                <div class="col-md-6">
-                                                    <strong>Description:</strong> <span id="preview-description"></span>
-                                                </div>
-                                                <div class="col-md-3">
-                                                    <strong>From (Credit):</strong> <span id="preview-credit"></span>
-                                                </div>
-                                                <div class="col-md-3">
-                                                    <strong>To (Debit):</strong> <span id="preview-debit"></span>
-                                                </div>
+                            <!-- Totals Section -->
+                            <div class="row mt-4">
+                                <div class="col-md-6 offset-md-6">
+                                    <div class="card bg-light border-0">
+                                        <div class="card-body">
+                                            <div class="d-flex justify-content-between mb-3">
+                                                <span class="fw-semibold">Total Debit</span>
+                                                <span class="fw-bold text-danger" id="totalDebitDisplay">PKR 0.00</span>
+                                            </div>
+                                            <div class="d-flex justify-content-between mb-3">
+                                                <span class="fw-semibold">Total Credit</span>
+                                                <span class="fw-bold text-success" id="totalCreditDisplay">PKR 0.00</span>
+                                            </div>
+                                            <hr class="my-2">
+                                            <div class="d-flex justify-content-between mt-2">
+                                                <span class="fw-semibold">Difference</span>
+                                                <span class="fw-bold" id="totalDifferenceDisplay">PKR 0.00</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Balance Display -->
-                            <div class="row mb-3" id="balance-info" style="display: none;">
-                                <div class="col-12">
-                                    <div class="alert alert-info">
-                                        <h6 class="alert-heading">Balance Information</h6>
-                                        <div class="row">
-                                            <div class="col-md-6">
-                                                <strong>Credit Account Balance:</strong> <span id="credit-balance">PKR 0.00</span>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <strong>Debit Account Balance:</strong> <span id="debit-balance">PKR 0.00</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-12">
-                                    <button type="submit" class="btn btn-primary me-2" id="submitButton">
-                                        <i class="bx bx-transfer-alt me-1"></i>
-                                        Process Transfer
-                                    </button>
-                                    <a href="{{ route('general-transactions.index') }}" class="btn btn-outline-secondary">
-                                        <i class="bx bx-x me-1"></i>
-                                        Cancel
+                            <!-- Submit Buttons -->
+                            <div class="row mt-4">
+                                <div class="col-12 text-end">
+                                    <a href="{{ route('general-transactions.index') }}" class="btn btn-outline-secondary me-2">
+                                        <i class="bx bx-x me-1"></i> Cancel
                                     </a>
+                                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                                        <i class="bx bx-save me-1"></i> Save Journal Entry
+                                    </button>
                                 </div>
                             </div>
                         </form>
@@ -219,109 +90,742 @@
         </div>
     </div>
 
+    <!-- Include Select2 with Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+    <style>
+        .journal-entry-row {
+            background: #ffffff;
+            border: 1px solid #e9ecef;
+            border-radius: 0.75rem;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            transition: all 0.2s ease-in-out;
+            position: relative;
+        }
+        
+        .journal-entry-row:hover {
+            border-color: #c5cae9;
+            box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.05);
+        }
+        
+        .entry-number {
+            position: absolute;
+            top: -10px;
+            left: 10px;
+            background: #696cff;
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 20px;
+            z-index: 1;
+        }
+        
+        /* Enhanced Select2 Search Styles */
+        .select2-container--bootstrap-5 .select2-selection {
+            min-height: 42px;
+            border-radius: 0.5rem;
+            border-color: #e9ecef;
+        }
+        
+        .select2-container--bootstrap-5 .select2-selection--single {
+            background-color: #fff;
+        }
+        
+        .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+            line-height: 40px;
+            padding-left: 1rem;
+            color: #495057;
+        }
+        
+        .select2-container--bootstrap-5 .select2-dropdown {
+            border-radius: 0.5rem;
+            border-color: #e9ecef;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+        
+        .select2-container--bootstrap-5 .select2-search--dropdown {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .select2-container--bootstrap-5 .select2-search__field {
+            border-radius: 0.5rem;
+            border: 1px solid #e9ecef;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+        
+        .select2-container--bootstrap-5 .select2-search__field:focus {
+            border-color: #696cff;
+            box-shadow: 0 0 0 0.2rem rgba(105, 108, 255, 0.25);
+            outline: none;
+        }
+        
+        .select2-container--bootstrap-5 .select2-results__option {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+        
+        .select2-container--bootstrap-5 .select2-results__option--highlighted {
+            background-color: #696cff;
+            color: white;
+        }
+        
+        .select2-container--bootstrap-5 .select2-results__option .fa,
+        .select2-container--bootstrap-5 .select2-results__option .fas,
+        .select2-container--bootstrap-5 .select2-results__option .far {
+            margin-right: 8px;
+            width: 16px;
+        }
+        
+        .select2-container--bootstrap-5 .select2-results__group {
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            color: #6c757d;
+            background-color: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .amount-input {
+            font-size: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e9ecef;
+            transition: all 0.2s;
+            height: 42px;
+        }
+        
+        .amount-input:focus {
+            background-color: #fff8e1;
+            border-color: #ffc107;
+            box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.15);
+        }
+        
+        .debit-badge {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .credit-badge {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-block;
+        }
+        
+        .remove-row-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .remove-row-btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .form-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            color: #6c757d;
+            margin-bottom: 0.5rem;
+        }
+        
+        .card-header {
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        #addRowBtn {
+            border-radius: 50px;
+            padding: 0.5rem 1.25rem;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .journal-entry-row {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        .is-invalid {
+            border-color: #dc3545 !important;
+        }
+        
+        /* Search input styling */
+        .select2-search__field {
+            font-size: 14px !important;
+            padding: 8px 12px !important;
+        }
+        
+        .select2-search__field::placeholder {
+            color: #adb5bd;
+            font-size: 13px;
+        }
+        
+        /* Highlight matched text */
+        .select2-results__option .highlight {
+            background-color: #fff3cd;
+            font-weight: bold;
+            color: #856404;
+        }
+    </style>
+
     <script>
         $(document).ready(function() {
-            // Update balance display when credit or debit is selected
-            $('#credit_id, #debit_id, #amount').on('change keyup', function() {
-                updateBalanceDisplay();
-                validateAmount();
-                updatePreview();
-            });
+            let rowCounter = 0;
+            let rowData = [];
 
-            function getAccountName(selectElement) {
-                const selected = selectElement.find('option:selected');
-                const name = selected.data('name') || 'Unknown';
-                const type = selected.data('type') || 'Account';
-                return name;
-            }
-
-            function updatePreview() {
-                const creditSelect = $('#credit_id');
-                const debitSelect = $('#debit_id');
-                const creditName = getAccountName(creditSelect);
-                const debitName = getAccountName(debitSelect);
-                const amount = parseFloat($('#amount').val()) || 0;
-                const description = $('#description').val();
-
-                if (creditSelect.val() && debitSelect.val()) {
-                    $('#preview-credit').text(creditName);
-                    $('#preview-debit').text(debitName);
-                    
-                    // Generate preview description
-                    let previewDesc = description ? description + ' - ' : '';
-                    previewDesc += 'Transfer from ' + creditName + ' to ' + debitName;
-                    if (amount > 0) {
-                        previewDesc += ' (PKR ' + amount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ')';
-                    }
-                    $('#preview-description').text(previewDesc);
-                    
-                    $('#preview-section').show();
-                } else {
-                    $('#preview-section').hide();
+            // Custom matcher for word search (matches complete words)
+            function customMatcher(params, data) {
+                // If there's no search term, return all data
+                if ($.trim(params.term) === '') {
+                    return data;
                 }
-            }
-
-            function updateBalanceDisplay() {
-                const creditSelect = $('#credit_id');
-                const debitSelect = $('#debit_id');
-                const creditBalance = creditSelect.find('option:selected').data('balance') || 0;
-                const debitBalance = debitSelect.find('option:selected').data('balance') || 0;
-
-                if (creditSelect.val() && debitSelect.val()) {
-                    $('#credit-balance').text('PKR ' + parseFloat(creditBalance).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                    }));
-                    $('#debit-balance').text('PKR ' + parseFloat(debitBalance).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                    }));
-                    $('#balance-info').show();
-                } else {
-                    $('#balance-info').hide();
-                }
-            }
-
-            // Validate amount against credit account balance
-            $('#amount').on('input', function() {
-                validateAmount();
-            });
-
-            function validateAmount() {
-                const amount = parseFloat($('#amount').val()) || 0;
-                const creditBalance = parseFloat($('#credit_id').find('option:selected').data('balance')) || 0;
-
-                if (amount > creditBalance) {
-                    $('#amount').addClass('is-invalid');
-                    if ($('#amount-error').length === 0) {
-                        $('#amount').after('<div id="amount-error" class="invalid-feedback">Amount cannot exceed credit account balance (PKR ' + creditBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ')</div>');
-                    } else {
-                        $('#amount-error').text('Amount cannot exceed credit account balance (PKR ' + creditBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ')');
-                    }
-                    return false;
-                } else {
-                    $('#amount').removeClass('is-invalid');
-                    $('#amount-error').remove();
-                    return true;
-                }
-            }
-
-            // Prevent selecting same account for credit and debit
-            $('#credit_id, #debit_id').on('change', function() {
-                const creditVal = $('#credit_id').val();
-                const debitVal = $('#debit_id').val();
                 
-                if (creditVal && debitVal && creditVal === debitVal) {
-                    alert('Credit and Debit accounts cannot be the same');
-                    $(this).val('').trigger('change');
+                // Get search term and split into words
+                var searchTerm = params.term.toLowerCase().trim();
+                var searchWords = searchTerm.split(/\s+/);
+                
+                var text = data.text.toLowerCase();
+                
+                // Check if all search words are present in the text (AND logic)
+                var matchesAllWords = searchWords.every(function(word) {
+                    return text.indexOf(word) !== -1;
+                });
+                
+                if (matchesAllWords) {
+                    return data;
+                }
+                
+                // Also search in custom data attributes
+                var $option = $(data.element);
+                var customName = ($option.data('name') || '').toLowerCase();
+                var customType = ($option.data('type') || '').toLowerCase();
+                var customBalance = ($option.data('balance') || '').toString().toLowerCase();
+                
+                var matchesInCustom = searchWords.every(function(word) {
+                    return customName.indexOf(word) !== -1 || 
+                           customType.indexOf(word) !== -1 || 
+                           customBalance.indexOf(word) !== -1;
+                });
+                
+                if (matchesInCustom) {
+                    return data;
+                }
+                
+                return null;
+            }
+            
+            // Highlight matching text in results
+            function highlightMatch(text, searchTerm) {
+                if (!searchTerm) return text;
+                
+                var searchWords = searchTerm.toLowerCase().trim().split(/\s+/);
+                var highlightedText = text;
+                
+                searchWords.forEach(function(word) {
+                    var regex = new RegExp('(' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+                    highlightedText = highlightedText.replace(regex, '<mark class="highlight">$1</mark>');
+                });
+                
+                return highlightedText;
+            }
+            
+            // Format account results with icons, badges, and highlighted search terms
+            function formatAccountResult(option, searchTerm) {
+                if (!option.id) {
+                    return option.text;
+                }
+                
+                var $option = $(option.element);
+                var type = $option.data('type');
+                var name = $option.data('name');
+                var balance = $option.data('balance');
+                var originalText = option.text;
+                var icon = '';
+                var badge = '';
+                
+                switch(type) {
+                    case 'customer':
+                        icon = '<i class="fas fa-users" style="color: #0d6efd;"></i>';
+                        badge = '<span class="badge bg-primary ms-2" style="font-size: 10px;">Customer</span>';
+                        break;
+                    case 'vendor':
+                        icon = '<i class="fas fa-truck" style="color: #198754;"></i>';
+                        badge = '<span class="badge bg-success ms-2" style="font-size: 10px;">Vendor</span>';
+                        break;
+                    case 'bank':
+                        icon = '<i class="fas fa-university" style="color: #6f42c1;"></i>';
+                        badge = '<span class="badge bg-purple ms-2" style="font-size: 10px; background-color: #6f42c1;">Bank</span>';
+                        break;
+                    case 'cash':
+                        icon = '<i class="fas fa-money-bill-wave" style="color: #fd7e14;"></i>';
+                        badge = '<span class="badge bg-warning ms-2" style="font-size: 10px;">Cash</span>';
+                        break;
+                    case 'expense':
+                        icon = '<i class="fas fa-receipt" style="color: #dc3545;"></i>';
+                        badge = '<span class="badge bg-danger ms-2" style="font-size: 10px;">Expense</span>';
+                        break;
+                    default:
+                        icon = '<i class="fas fa-building"></i>';
+                        badge = '';
+                }
+                
+                // Get the display text without HTML
+                var displayText = originalText;
+                var highlightedText = highlightMatch(displayText, searchTerm);
+                
+                var balanceHtml = balance ? `<small class="text-muted ms-2">Balance: PKR ${parseFloat(balance).toLocaleString()}</small>` : '';
+                
+                var $result = $(
+                    `<div class="d-flex align-items-center justify-content-between w-100">
+                        <div>
+                            ${icon} <span>${highlightedText}</span>
+                            ${badge}
+                            ${balanceHtml}
+                        </div>
+                    </div>`
+                );
+                
+                return $result;
+            }
+            
+            function formatAccountSelection(option) {
+                if (!option.id) {
+                    return option.text;
+                }
+                
+                var $option = $(option.element);
+                var type = $option.data('type');
+                var icon = '';
+                
+                switch(type) {
+                    case 'customer':
+                        icon = '<i class="fas fa-users me-2" style="color: #0d6efd;"></i>';
+                        break;
+                    case 'vendor':
+                        icon = '<i class="fas fa-truck me-2" style="color: #198754;"></i>';
+                        break;
+                    case 'bank':
+                        icon = '<i class="fas fa-university me-2" style="color: #6f42c1;"></i>';
+                        break;
+                    case 'cash':
+                        icon = '<i class="fas fa-money-bill-wave me-2" style="color: #fd7e14;"></i>';
+                        break;
+                    case 'expense':
+                        icon = '<i class="fas fa-receipt me-2" style="color: #dc3545;"></i>';
+                        break;
+                    default:
+                        icon = '<i class="fas fa-building me-2"></i>';
+                }
+                
+                return $(`<span>${icon} ${option.text}</span>`);
+            }
+
+            // Initialize Select2 with enhanced search
+            function initSelect2(element, searchTerm = '') {
+                if (element && !$(element).data('select2')) {
+                    $(element).select2({
+                        theme: 'bootstrap-5',
+                        width: '100%',
+                        placeholder: '🔍 Search by name (e.g., "Zain", "John", "Utility")...',
+                        allowClear: true,
+                        dropdownParent: $(element).closest('.journal-entry-row'),
+                        matcher: customMatcher,
+                        templateResult: function(option) {
+                            var searchInput = $(element).data('select2').dropdown.$search;
+                            var currentSearchTerm = searchInput ? searchInput.val() : '';
+                            return formatAccountResult(option, currentSearchTerm);
+                        },
+                        templateSelection: formatAccountSelection,
+                        language: {
+                            searching: function() {
+                                return 'Searching accounts...';
+                            },
+                            noResults: function() {
+                                return '<div class="text-center p-3"><i class="fas fa-search me-2"></i> No accounts found matching your search. Try "Zain", "Utility", "Bank", etc.</div>';
+                            },
+                            inputTooShort: function() {
+                                return 'Type at least 1 character to search';
+                            }
+                        }
+                    });
+                }
+            }
+
+            // Sync date field
+            $('#transaction_date').on('change', function() {
+                $('#hidden_transaction_date').val($(this).val());
+            });
+
+            // Create new journal entry row
+            function createNewRow(rowId, isFirst = false, savedData = null) {
+                let accountValue = savedData ? savedData.account : '';
+                let debitValue = savedData ? savedData.debit : '0';
+                let creditValue = savedData ? savedData.credit : '0';
+                let descriptionValue = savedData ? savedData.description : '';
+                
+                let optionsHtml = `
+                    <option value="">Search by name (e.g., "Zain", "Utility", "Bank")...</option>
+                    <optgroup label="CUSTOMERS">
+                        @if(isset($customers) && $customers->count() > 0)
+                            @foreach ($customers as $customer)
+                                <option value="customer_{{ $customer->id }}" data-type="customer" data-name="{{ $customer->name }}" data-balance="{{ $customer->balance ?? 0 }}" ${accountValue == 'customer_{{ $customer->id }}' ? 'selected' : ''}>
+                                    <i class="fas fa-users"></i> {{ $customer->name }} (Customer) - Balance: PKR {{ number_format($customer->balance ?? 0, 2) }}
+                                </option>
+                            @endforeach
+                        @endif
+                    </optgroup>
+                    <optgroup label="VENDORS">
+                        @if(isset($vendors) && $vendors->count() > 0)
+                            @foreach ($vendors as $vendor)
+                                <option value="vendor_{{ $vendor->id }}" data-type="vendor" data-name="{{ $vendor->company_name }}" data-balance="{{ $vendor->balance ?? 0 }}" ${accountValue == 'vendor_{{ $vendor->id }}' ? 'selected' : ''}>
+                                    <i class="fas fa-truck"></i> {{ $vendor->company_name }} (Vendor) - Balance: PKR {{ number_format($vendor->balance ?? 0, 2) }}
+                                </option>
+                            @endforeach
+                        @endif
+                    </optgroup>
+                    <optgroup label="BANKS">
+                        @if(isset($banks) && $banks->count() > 0)
+                            @foreach ($banks as $bank)
+                                @php
+                                    $balance = property_exists($bank, 'account_balance') ? $bank->account_balance : (property_exists($bank, 'balance') ? $bank->balance : 0);
+                                @endphp
+                                <option value="bank_{{ $bank->id }}" data-type="bank" data-name="{{ $bank->name }}" data-balance="{{ $balance }}" ${accountValue == 'bank_{{ $bank->id }}' ? 'selected' : ''}>
+                                    <i class="fas fa-university"></i> {{ $bank->name }} (Bank) - Balance: PKR {{ number_format($balance, 2) }}
+                                </option>
+                            @endforeach
+                        @endif
+                    </optgroup>
+                    <optgroup label="CASH">
+                        @if(isset($cash) && $cash)
+                            <option value="cash_{{ $cash->id }}" data-type="cash" data-name="Cash Account" data-balance="{{ $cash->balance ?? 0 }}" ${accountValue == 'cash_{{ $cash->id }}' ? 'selected' : ''}>
+                                <i class="fas fa-money-bill-wave"></i> Cash Account (Cash) - Balance: PKR {{ number_format($cash->balance ?? 0, 2) }}
+                            </option>
+                        @endif
+                    </optgroup>
+                    <optgroup label="EXPENSES">
+                        <!-- Dynamic Expenses from Database -->
+                        @if(isset($expenses) && $expenses->count() > 0)
+                            @foreach ($expenses as $expense)
+                                <option value="expense_{{ $expense->id }}" data-type="expense" data-name="{{ $expense->name }}" data-balance="0" ${accountValue == 'expense_{{ $expense->id }}' ? 'selected' : ''}>
+                                    <i class="fas fa-receipt"></i> {{ $expense->name }} (Expense)
+                                </option>
+                            @endforeach
+                        @endif
+                        <!-- Predefined Expense Options -->
+                        <option value="expense_utility" data-type="expense" data-name="Utility Expense" data-balance="0" ${accountValue == 'expense_utility' ? 'selected' : ''}>
+                            <i class="fas fa-bolt"></i> Utility Expense
+                        </option>
+                        <option value="expense_rent" data-type="expense" data-name="Rent Expense" data-balance="0" ${accountValue == 'expense_rent' ? 'selected' : ''}>
+                            <i class="fas fa-building"></i> Rent Expense
+                        </option>
+                        <option value="expense_salary" data-type="expense" data-name="Salary Expense" data-balance="0" ${accountValue == 'expense_salary' ? 'selected' : ''}>
+                            <i class="fas fa-users"></i> Salary Expense
+                        </option>
+                        <option value="expense_stationery" data-type="expense" data-name="Stationery Expense" data-balance="0" ${accountValue == 'expense_stationery' ? 'selected' : ''}>
+                            <i class="fas fa-pen"></i> Stationery Expense
+                        </option>
+                        <option value="expense_travel" data-type="expense" data-name="Travel Expense" data-balance="0" ${accountValue == 'expense_travel' ? 'selected' : ''}>
+                            <i class="fas fa-plane"></i> Travel Expense
+                        </option>
+                        <option value="expense_maintenance" data-type="expense" data-name="Maintenance Expense" data-balance="0" ${accountValue == 'expense_maintenance' ? 'selected' : ''}>
+                            <i class="fas fa-tools"></i> Maintenance Expense
+                        </option>
+                        <option value="expense_marketing" data-type="expense" data-name="Marketing Expense" data-balance="0" ${accountValue == 'expense_marketing' ? 'selected' : ''}>
+                            <i class="fas fa-chart-line"></i> Marketing Expense
+                        </option>
+                        <option value="expense_insurance" data-type="expense" data-name="Insurance Expense" data-balance="0" ${accountValue == 'expense_insurance' ? 'selected' : ''}>
+                            <i class="fas fa-shield-alt"></i> Insurance Expense
+                        </option>
+                    </optgroup>
+                `;
+                
+                return `
+                    <div class="journal-entry-row" data-row-id="${rowId}">
+                        <div class="entry-number">Entry ${parseInt(rowId) + 1}</div>
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label"><i class="fas fa-search me-1"></i> Account</label>
+                                <select class="form-select account-select select2-search" name="account_ids[]" data-row="${rowId}" style="width: 100%;">
+                                    ${optionsHtml}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label"><span class="debit-badge"><i class="fas fa-arrow-down me-1"></i> DEBIT</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-transparent">PKR</span>
+                                    <input type="number" class="form-control amount-input debit-amount" name="debit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${debitValue}" data-row="${rowId}">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label"><span class="credit-badge"><i class="fas fa-arrow-up me-1"></i> CREDIT</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-transparent">PKR</span>
+                                    <input type="number" class="form-control amount-input credit-amount" name="credit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${creditValue}" data-row="${rowId}">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label"><i class="fas fa-align-left me-1"></i> Description</label>
+                                <input type="text" class="form-control" name="descriptions[]" placeholder="Optional description..." value="${descriptionValue.replace(/"/g, '&quot;')}">
+                            </div>
+                            <div class="col-md-1">
+                                <button type="button" class="btn btn-outline-danger remove-row-btn" data-row="${rowId}" ${isFirst ? 'style="display: none;"' : ''}>
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Save current row data
+            function saveCurrentData() {
+                rowData = [];
+                $('.journal-entry-row').each(function(index) {
+                    let row = $(this);
+                    rowData.push({
+                        account: row.find('.account-select').val(),
+                        debit: row.find('.debit-amount').val(),
+                        credit: row.find('.credit-amount').val(),
+                        description: row.find('input[name="descriptions[]"]').val()
+                    });
+                });
+            }
+
+            // Restore row data
+            function restoreData() {
+                $('.journal-entry-row').each(function(index) {
+                    let row = $(this);
+                    if (rowData[index]) {
+                        if (rowData[index].account) {
+                            row.find('.account-select').val(rowData[index].account).trigger('change');
+                        }
+                        row.find('.debit-amount').val(rowData[index].debit);
+                        row.find('.credit-amount').val(rowData[index].credit);
+                        row.find('input[name="descriptions[]"]').val(rowData[index].description);
+                    }
+                });
+            }
+
+            // Render all rows
+            function renderRows() {
+                let container = $('#journalEntriesContainer');
+                
+                if ($('.journal-entry-row').length > 0) {
+                    saveCurrentData();
+                }
+                
+                container.empty();
+                
+                for (let i = 0; i <= rowCounter; i++) {
+                    let savedData = rowData[i] || null;
+                    let rowHtml = createNewRow(i, i === 0, savedData);
+                    container.append(rowHtml);
+                }
+                
+                $('.account-select').each(function() {
+                    initSelect2(this);
+                });
+                
+                if (rowData.length > 0) {
+                    restoreData();
+                }
+                
+                calculateTotals();
+            }
+
+            // Add new row
+            $('#addRowBtn').click(function(e) {
+                e.preventDefault();
+                saveCurrentData();
+                rowCounter++;
+                
+                let newRowId = rowCounter;
+                let newRowHtml = createNewRow(newRowId, false, null);
+                $('#journalEntriesContainer').append(newRowHtml);
+                
+                initSelect2($(`.journal-entry-row[data-row-id="${newRowId}"] .account-select`));
+                
+                $('.journal-entry-row').each(function(index) {
+                    $(this).find('.entry-number').text(`Entry ${index + 1}`);
+                    $(this).attr('data-row-id', index);
+                });
+                
+                calculateTotals();
+                
+                $('html, body').animate({
+                    scrollTop: $(document).height()
+                }, 500);
+            });
+
+            // Remove row
+            $(document).on('click', '.remove-row-btn', function(e) {
+                e.preventDefault();
+                let rowId = $(this).data('row');
+                $(`.journal-entry-row[data-row-id="${rowId}"]`).remove();
+                
+                $('.journal-entry-row').each(function(index) {
+                    $(this).find('.entry-number').text(`Entry ${index + 1}`);
+                    $(this).attr('data-row-id', index);
+                });
+                
+                rowCounter = $('.journal-entry-row').length - 1;
+                calculateTotals();
+            });
+
+            // Handle debit/credit input
+            $(document).on('input', '.debit-amount', function() {
+                let row = $(this).closest('.journal-entry-row');
+                let debitVal = parseFloat($(this).val()) || 0;
+                let creditInput = row.find('.credit-amount');
+                let creditVal = parseFloat(creditInput.val()) || 0;
+                
+                if (debitVal > 0 && creditVal > 0) {
+                    creditInput.val(0);
+                }
+                
+                calculateTotals();
+            });
+
+            $(document).on('input', '.credit-amount', function() {
+                let row = $(this).closest('.journal-entry-row');
+                let creditVal = parseFloat($(this).val()) || 0;
+                let debitInput = row.find('.debit-amount');
+                let debitVal = parseFloat(debitInput.val()) || 0;
+                
+                if (creditVal > 0 && debitVal > 0) {
+                    debitInput.val(0);
+                }
+                
+                calculateTotals();
+            });
+
+            // Calculate totals
+            function calculateTotals() {
+                let totalDebit = 0;
+                let totalCredit = 0;
+                
+                $('.debit-amount').each(function() {
+                    let val = parseFloat($(this).val()) || 0;
+                    if (val > 0) {
+                        totalDebit += val;
+                    }
+                });
+                
+                $('.credit-amount').each(function() {
+                    let val = parseFloat($(this).val()) || 0;
+                    if (val > 0) {
+                        totalCredit += val;
+                    }
+                });
+                
+                $('#totalDebitDisplay').text('PKR ' + totalDebit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                $('#totalCreditDisplay').text('PKR ' + totalCredit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                
+                let difference = totalDebit - totalCredit;
+                let differenceElement = $('#totalDifferenceDisplay');
+                let isBalanced = (difference === 0);
+                
+                if (difference === 0) {
+                    differenceElement.html('<span class="text-success"><i class="fas fa-check-circle me-1"></i> Balanced: PKR ' + Math.abs(difference).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>');
+                    $('#submitBtn').prop('disabled', false);
+                } else if (difference > 0) {
+                    differenceElement.html('<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Debit exceeds Credit by PKR ' + Math.abs(difference).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>');
+                    $('#submitBtn').prop('disabled', true);
+                } else {
+                    differenceElement.html('<span class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Credit exceeds Debit by PKR ' + Math.abs(difference).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>');
+                    $('#submitBtn').prop('disabled', true);
+                }
+                
+                return { totalDebit, totalCredit, difference, isBalanced };
+            }
+
+            // Form validation
+            $('#generalEntryForm').submit(function(e) {
+                let { totalDebit, totalCredit, difference, isBalanced } = calculateTotals();
+                
+                if (totalDebit === 0 && totalCredit === 0) {
+                    alert('❌ Please add at least one journal entry with amount');
+                    e.preventDefault();
+                    return false;
+                }
+                
+                if (!isBalanced) {
+                    alert('❌ Journal Entry is not balanced!\n\nTotal Debit: PKR ' + totalDebit.toFixed(2) + '\nTotal Credit: PKR ' + totalCredit.toFixed(2) + '\nDifference: PKR ' + Math.abs(difference).toFixed(2) + '\n\nPlease adjust entries to balance Debit and Credit.');
+                    e.preventDefault();
+                    return false;
+                }
+                
+                let hasEmptyAccount = false;
+                $('.account-select').each(function() {
+                    if (!$(this).val()) {
+                        hasEmptyAccount = true;
+                        $(this).addClass('is-invalid');
+                    } else {
+                        $(this).removeClass('is-invalid');
+                    }
+                });
+                
+                if (hasEmptyAccount) {
+                    alert('❌ Please select an account for all rows');
+                    e.preventDefault();
+                    return false;
+                }
+                
+                let invalidRows = false;
+                $('.journal-entry-row').each(function(index) {
+                    let debit = parseFloat($(this).find('.debit-amount').val()) || 0;
+                    let credit = parseFloat($(this).find('.credit-amount').val()) || 0;
+                    
+                    if (debit === 0 && credit === 0) {
+                        alert('❌ Row ' + (index + 1) + ' must have either Debit or Credit amount');
+                        invalidRows = true;
+                    }
+                });
+                
+                if (invalidRows) {
+                    e.preventDefault();
+                    return false;
                 }
             });
 
-            // Auto-generate description hint
-            $('#description').on('input', function() {
-                updatePreview();
-            });
+            // Initial render
+            renderRows();
         });
     </script>
+    
+    @push('scripts')
+    <script>
+        // Pass data from PHP to JavaScript
+        var expensesData = @json($expenses ?? []);
+    </script>
+    @endpush
 @endsection

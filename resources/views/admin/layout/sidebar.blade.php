@@ -9,7 +9,7 @@
                         alt="{{ $companySettings->name ?? 'Company Logo' }}" class="img-fluid">
                 @else
                     {{-- Fallback to default logo if no data in database --}}
-                    <img src="{{ asset('images/Intikhab-logo-scaled-copy-2048x560-1.png') }}" width="200px"
+                    <img src="{{ asset('images/logo.png') }}" width="200px"
                         alt="Default Logo" class="img-fluid">
                 @endif
             </span>
