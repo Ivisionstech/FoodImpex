@@ -152,11 +152,11 @@
                 <div>Finances</div>
             </a>
             <ul class="menu-sub">
-                <li class="menu-item {{ request()->routeIs('profits.list') ? 'active' : '' }}">
+                <!-- <li class="menu-item {{ request()->routeIs('profits.list') ? 'active' : '' }}">
                     <a href="{{ route('profits.list') }}" class="menu-link">
                         <div>Profits</div>
                     </a>
-                </li>
+                </li> -->
 
                 <li class="menu-item {{ request()->routeIs('expenses.list') ? 'active' : '' }}">
                     <a href="{{ route('expenses.list') }}" class="menu-link">
