@@ -174,30 +174,21 @@
 </head>
 
 <body>
-    @php
-        /**
-         * IMAGE HANDLING LOGIC
-         */
-        $logoSrc = null;
+  @php
+        // LOGO DYNAMIC HANDLING - Same as Customer side
+        $logoSrc = "";
+        $logoPath = public_path('images/logo.png');
 
-        // Path 1: Database dynamic logo
-        if (isset($companySettings) && $companySettings->logo) {
-            $dynamicPath = storage_path('app/public/' . $companySettings->logo);
-            if (file_exists($dynamicPath)) {
-                $ext = pathinfo($dynamicPath, PATHINFO_EXTENSION);
-                $data = base64_encode(file_get_contents($dynamicPath));
-                $logoSrc = 'data:image/' . $ext . ';base64,' . $data;
+        if(isset($companySettings) && $companySettings && $companySettings->logo) {
+            $s_path = storage_path('app/public/' . $companySettings->logo);
+            if(file_exists($s_path)) {
+                $logoPath = $s_path;
             }
         }
 
-        // Path 2: Fallback to default static logo if dynamic fails
-        if (!$logoSrc) {
-            $staticPath = public_path('images/Intikhab-logo-scaled-copy-2048x560-1.png');
-            if (file_exists($staticPath)) {
-                $ext = pathinfo($staticPath, PATHINFO_EXTENSION);
-                $data = base64_encode(file_get_contents($staticPath));
-                $logoSrc = 'data:image/' . $ext . ';base64,' . $data;
-            }
+        if(file_exists($logoPath)) {
+            $logoData = base64_encode(file_get_contents($logoPath));
+            $logoSrc = 'data:image/' . pathinfo($logoPath, PATHINFO_EXTENSION) . ';base64,' . $logoData;
         }
     @endphp
 
