@@ -6,6 +6,17 @@ use Illuminate\Database\Eloquent\Model;
 
 class VendorTransaction extends Model
 {
+    
+
+    protected $table = 'vendor_transactions';
+    
+   protected $fillable = [
+    'uuid', 'vendor_id', 'date', 'amount', 'description', 
+    'type', 'transaction_type', 'approval_status', 'current_balance', 'bill_id'
+];
+    
+    public $timestamps = true;
+
     protected $guarded = [];
     public function vendor()
     {

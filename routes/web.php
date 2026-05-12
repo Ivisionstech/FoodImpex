@@ -222,34 +222,45 @@ Route::delete('customers/bills/delete/{uuid}', [CustomerBillController::class, '
     });
 
     // ==================== GENERAL TRANSACTIONS ROUTES ====================
-   Route::prefix('general-transactions')->name('general-transactions.')->group(function () {
+Route::prefix('general-transactions')->name('general-transactions.')->group(function () {
+    // Static routes first (no parameters)
     Route::get('/', [GeneralTransactionController::class, 'index'])->name('index');
     Route::get('/entries', [GeneralTransactionController::class, 'generalEntriesList'])->name('entries-list');
     Route::get('/general-entry', [GeneralTransactionController::class, 'generalEntry'])->name('general-entry');
     Route::post('/general-entry/store', [GeneralTransactionController::class, 'storeGeneralEntry'])->name('general-entry.store');
-    
-    // Approve General Entry Route (Admin only)
     Route::post('/approve/{id}', [GeneralTransactionController::class, 'approveEntry'])->name('approve');
+    Route::delete('/delete/{id}', [GeneralTransactionController::class, 'deleteEntry'])->name('delete');
+    Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
     
+    // Transfer routes (static)
     Route::get('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorForm'])->name('customer-to-vendor');
     Route::post('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorTransfer'])->name('customer-to-vendor.store');
-    
     Route::get('/bank-to-bank', [GeneralTransactionController::class, 'bankToBankForm'])->name('bank-to-bank');
     Route::post('/bank-to-bank', [GeneralTransactionController::class, 'bankToBankTransfer'])->name('bank-to-bank.store');
-    
     Route::get('/bank-withdraw', [GeneralTransactionController::class, 'bankWithdrawForm'])->name('bank-withdraw');
     Route::post('/bank-withdraw', [GeneralTransactionController::class, 'bankWithdraw'])->name('bank-withdraw.store');
-    
     Route::get('/bank-deposit', [GeneralTransactionController::class, 'bankDepositForm'])->name('bank-deposit');
     Route::post('/bank-deposit', [GeneralTransactionController::class, 'bankDeposit'])->name('bank-deposit.store');
     
-    Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
-        Route::get('/{id}', [GeneralTransactionController::class, 'getEntryDetails'])->name('details');
-
+    // Dynamic route LAST (catch-all for IDs)
+    Route::get('/{id}', [GeneralTransactionController::class, 'getEntry'])->name('get-entry');
 });
 
-
-
+Route::get('/test-daybook-save', function() {
+    try {
+        $test = \App\Models\Daybook::create([
+            'transaction_date' => now(),
+            'amount' => 100,
+            'status' => 1,
+            'type' => 'transaction',
+            'approval_status' => 'approved',
+            'description' => 'Test entry',
+        ]);
+        return 'SUCCESS! Daybook entry created with ID: ' . $test->id;
+    } catch (\Exception $e) {
+        return 'ERROR: ' . $e->getMessage();
+    }
+});
     // ==================== ACCESS CONTROL ROUTES ====================
     Route::prefix('access-control')->name('access-control.')->group(function () {
         Route::resource('roles', RoleController::class);
