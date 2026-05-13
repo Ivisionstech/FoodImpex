@@ -209,11 +209,46 @@
         // Use $allTransactions (passed from controller)
         $transactions = $allTransactions ?? collect();
         
+        // Sort transactions in ASCENDING order for correct running balance (oldest first)
+        $sortedTransactions = $transactions->sortBy(function($transaction) {
+            return $transaction->transaction_date;
+        })->values();
+        
+        $runningBalance = 0;
+        $transactionsWithBalance = [];
+        
+        foreach ($sortedTransactions as $transaction) {
+            $amount = floatval($transaction->amount);
+            $type = $transaction->type;
+            
+            // Determine if this is DEBIT or CREDIT for balance calculation
+            // DEBIT = Customer owes us (Sales/Bill/Debit) - INCREASES what customer owes
+            // CREDIT = Customer paid us (Payment/Credit) - DECREASES what customer owes
+            if ($type == 'bill' || $type == 'debit') {
+                $runningBalance += $amount;
+            } elseif ($type == 'payment' || $type == 'credit') {
+                $runningBalance -= $amount;
+            } elseif ($type == 'balance') {
+                $runningBalance = $amount;
+            }
+            
+            // Store transaction with calculated balance as object
+            $transactionsWithBalance[] = (object)[
+                'transaction' => $transaction,
+                'current_balance' => $runningBalance,  // Same as view file variable name
+                'type' => $type,
+                'amount' => $amount
+            ];
+        }
+        
+        // Now reverse for display (newest first)
+        $transactionsWithBalance = array_reverse($transactionsWithBalance);
+        
         // Calculate summary totals
         $totalDebits = 0;
         $totalCredits = 0;
         
-        foreach($transactions as $transaction) {
+        foreach($sortedTransactions as $transaction) {
             $amount = floatval($transaction->amount);
             $type = $transaction->type;
             
@@ -271,17 +306,21 @@
             </tr>
         </thead>
         <tbody>
-            @forelse($transactions as $index => $transaction)
+            @forelse($transactionsWithBalance as $index => $item)
                 @php
-                    $amount = floatval($transaction->amount);
-                    $type = $transaction->type;
+                    $transaction = $item->transaction;
+                    $type = $item->type;
+                    $amount = $item->amount;
+                    // SAME LOGIC AS VIEW FILE - using current_balance
+                    $currentBalance = $item->current_balance;
                     $description = $transaction->description ?? '';
+                    
                     $debitAmount = 0;
                     $creditAmount = 0;
                     $displayType = '';
                     $badgeClass = '';
                     $badgeText = '';
-                    $currentBalance = isset($transaction->current_balance) ? floatval($transaction->current_balance) : 0;
+                    $descriptionText = '';
                     
                     if ($type == 'bill' || $type == 'debit') {
                         $debitAmount = $amount;
@@ -323,9 +362,13 @@
                         $descriptionText = $description ?: ucfirst($type);
                     }
                     
+                    // SAME DR/CR LOGIC AS VIEW FILE
+                    // View file uses: {{ $transaction->current_balance >= 0 ? 'DR' : 'CR' }}
+                    // When current_balance >= 0, it shows "DR" (Customer owes money)
+                    // When current_balance < 0, it shows "CR" (Customer has credit)
                     $balanceDisplay = number_format(abs($currentBalance), 2);
-                    $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
-                    $balanceClass = $currentBalance < 0 ? 'negative-balance' : ($currentBalance > 0 ? 'positive-balance' : '');
+                    $drCrDisplay = $currentBalance >= 0 ? 'DR' : 'CR';
+                    $balanceClass = $currentBalance < 0 ? 'positive-balance' : 'negative-balance';
                     $transactionDate = $transaction->transaction_date ?? $transaction->date ?? $transaction->created_at ?? now();
                 @endphp
                 <tr>
@@ -343,6 +386,7 @@
                         @endif
                         <span class="badge {{ $badgeClass }}">{{ $badgeText }}</span>
                     </td>
+                    <!-- DEBIT Column - Sales/Bills/Debit entries -->
                     <td class="amount-debit">
                         @if($debitAmount > 0)
                             {{ number_format($debitAmount, 2) }}
@@ -350,6 +394,7 @@
                             —
                         @endif
                     </td>
+                    <!-- CREDIT Column - Payments received/Credit entries -->
                     <td class="amount-credit">
                         @if($creditAmount > 0)
                             {{ number_format($creditAmount, 2) }}
@@ -357,9 +402,11 @@
                             —
                         @endif
                     </td>
+                    <!-- DR/CR Column - SAME LOGIC AS VIEW FILE -->
                     <td class="dr-cr-cell">
                         {{ $drCrDisplay }}
                     </td>
+                    <!-- BALANCE Column - SAME LOGIC AS VIEW FILE -->
                     <td class="balance {{ $balanceClass }}">
                         {{ $balanceDisplay }} {{ $drCrDisplay }}
                     </td>
@@ -385,18 +432,18 @@
         </div>
         <div class="summary-row">
             <span class="summary-label">Net Balance:</span>
-            <span class="summary-value {{ $netBalance >= 0 ? 'positive-balance' : 'negative-balance' }}">
-                PKR {{ number_format(abs($netBalance), 2) }} {{ $netBalance >= 0 ? 'CR' : 'DR' }}
+            <span class="summary-value {{ $netBalance >= 0 ? 'negative-balance' : 'positive-balance' }}">
+                PKR {{ number_format(abs($netBalance), 2) }} {{ $netBalance >= 0 ? 'DR' : 'CR' }}
             </span>
         </div>
         <div class="summary-row">
             <span class="summary-label">Total Transactions:</span>
-            <span class="summary-value">{{ count($transactions) }}</span>
+            <span class="summary-value">{{ count($transactionsWithBalance) }}</span>
         </div>
     </div>
 
     <div class="footer">
-        <p>This statement contains {{ count($transactions) }} transaction(s) in chronological order.</p>
+        <p>This statement contains {{ count($transactionsWithBalance) }} transaction(s) in chronological order.</p>
         <p><strong>{{ $companySettings->name ?? 'Food Impex' }}</strong> - Generated on {{ now()->format('F j, Y \a\t g:i A') }}</p>
         <p style="font-size: 10px; color: #999;">* This is a system-generated document. No signature required. *</p>
     </div>

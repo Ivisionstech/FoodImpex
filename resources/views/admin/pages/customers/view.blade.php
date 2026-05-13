@@ -198,7 +198,7 @@
                                         <strong>Opening Balance</strong><br>
                                         <small class="text-muted">Initial balance</small>
                                     @elseif (in_array($transaction->type, ['general_debit', 'general_credit']))
-                                        <strong class="text-info">General Entry</strong><br>
+                                        <strong class="text-primary">General Entry</strong><br>
                                         <small class="text-muted">{{ $transaction->description ?? 'Manual entry' }}</small>
                                         @if(isset($transaction->entry_type))
                                             <br><small class="text-muted">Type: {{ $transaction->entry_type }}</small>
@@ -211,10 +211,10 @@
                                 <td>
                                     <span class="fw-bold 
                                         @if($transaction->type == 'payment') text-success
-                                        @elseif(in_array($transaction->type, ['general_credit'])) text-info
-                                        @elseif(in_array($transaction->type, ['bill', 'general_debit'])) text-danger
+                                        @elseif(in_array($transaction->type, ['general_credit'])) text-primary
+                                        @elseif(in_array($transaction->type, ['bill', 'general_debit'])) text-primary
                                         @elseif($transaction->type == 'balance') text-warning
-                                        @else text-danger
+                                        @else text-primary
                                         @endif">
                                         PKR {{ number_format($transaction->amount, 0) }}
                                     </span>
@@ -222,8 +222,8 @@
                                 <td>
                                     <span class="badge 
                                         @if($transaction->type == 'payment') bg-label-success
-                                        @elseif(in_array($transaction->type, ['general_credit'])) bg-label-info
-                                        @elseif(in_array($transaction->type, ['bill', 'general_debit'])) bg-label-danger
+                                        @elseif(in_array($transaction->type, ['general_credit'])) bg-label-primary
+                                        @elseif(in_array($transaction->type, ['bill', 'general_debit'])) bg-label-primary
                                         @elseif($transaction->type == 'balance') bg-label-warning
                                         @else bg-label-secondary
                                         @endif">
@@ -265,7 +265,7 @@
                                         </span>
                                     @elseif (in_array($transaction->type, ['general_debit', 'general_credit']))
                                         <button type="button" 
-                                                class="btn btn-sm btn-outline-secondary" 
+                                                class="btn btn-sm btn-outline-primary" 
                                                 title="View General Entry Details"
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#generalEntryModal"
@@ -369,9 +369,9 @@
                 if (modalType) {
                     modalType.textContent = entryType;
                     if (entryType === 'DEBIT') {
-                        modalType.className = 'badge bg-danger';
+                        modalType.className = 'badge bg-primary';
                     } else {
-                        modalType.className = 'badge bg-success';
+                        modalType.className = 'badge bg-primary';
                     }
                 }
                 if (modalDescription) modalDescription.textContent = entryDescription;
