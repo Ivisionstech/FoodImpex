@@ -206,171 +206,25 @@
             $logoSrc = 'data:image/' . pathinfo($logoPath, PATHINFO_EXTENSION) . ';base64,' . $logoData;
         }
         
-        // Get transactions from the passed collection
-        $allTransactions = $transactions ?? $allTransactions ?? collect();
-        
-        // Sort transactions in ascending order by date (oldest first)
-        $sortedTransactions = $allTransactions->sortBy(function($transaction) {
-            return $transaction->transaction_date ?? $transaction->date ?? $transaction->created_at;
-        });
-        
-        // Calculate running balance
-        $runningBalance = 0;
-        $transactionsWithBalance = [];
-        
-        foreach($sortedTransactions as $transaction) {
-            $amount = (float)($transaction->amount ?? 0);
-            $type = $transaction->type ?? '';
-            $transactionType = $transaction->transaction_type ?? '';
-            $description = $transaction->description ?? '';
-            $method = $transaction->method ?? $transaction->send_via ?? '';
-            
-            // Determine DEBIT or CREDIT for this transaction
-            // DEBIT: Customer purchases (they owe us) - INCREASES balance
-            // CREDIT: Customer pays (they reduce debt) - DECREASES balance
-            $isDebit = false;
-            $isCredit = false;
-            $debitAmount = 0;
-            $creditAmount = 0;
-            $displayType = '';
-            $badgeClass = '';
-            $badgeText = '';
-            $descriptionText = '';
-            
-            // Check based on type field
-            if ($type == 'debit') {
-                $isDebit = true;
-                $debitAmount = $amount;
-                $displayType = 'Debit Entry';
-                $badgeClass = 'badge-debit';
-                $badgeText = 'DEBIT';
-                $descriptionText = $description ?: 'Debit transaction';
-            } 
-            elseif ($type == 'credit') {
-                $isCredit = true;
-                $creditAmount = $amount;
-                $displayType = 'Credit Entry';
-                $badgeClass = 'badge-credit';
-                $badgeText = 'CREDIT';
-                $descriptionText = $description ?: 'Credit transaction';
-            }
-            // Check transaction_type (from general entries)
-            elseif (!empty($transactionType)) {
-                if ($transactionType == 'debit') {
-                    $isDebit = true;
-                    $debitAmount = $amount;
-                    $displayType = 'Debit Entry';
-                    $badgeClass = 'badge-debit';
-                    $badgeText = 'DEBIT';
-                    $descriptionText = $description ?: 'General debit entry';
-                } elseif ($transactionType == 'credit') {
-                    $isCredit = true;
-                    $creditAmount = $amount;
-                    $displayType = 'Credit Entry';
-                    $badgeClass = 'badge-credit';
-                    $badgeText = 'CREDIT';
-                    $descriptionText = $description ?: 'General credit entry';
-                }
-            }
-            // Bill type (Sales Invoice)
-            elseif ($type == 'bill') {
-                $isDebit = true;
-                $debitAmount = $amount;
-                $displayType = 'Sales Invoice';
-                $badgeClass = 'badge-sales';
-                $badgeText = 'SALES';
-                $descriptionText = $description ?: 'Sales invoice';
-            } 
-            // Payment type
-            elseif ($type == 'payment') {
-                $isCredit = true;
-                $creditAmount = $amount;
-                $displayType = 'Payment Received';
-                $badgeClass = 'badge-payment';
-                $badgeText = 'PAYMENT';
-                $descriptionText = $description ?: 'Payment received';
-                if($method) {
-                    $descriptionText .= ' via ' . ucfirst($method);
-                }
-            } 
-            // Balance type (Opening Balance)
-            elseif ($type == 'balance') {
-                if ($amount > 0) {
-                    // Positive opening balance means customer has credit (they paid in advance)
-                    $isCredit = true;
-                    $creditAmount = $amount;
-                    $displayType = 'Opening Balance (Credit)';
-                    $badgeClass = 'badge-credit';
-                    $badgeText = 'OPENING CR';
-                } else {
-                    // Negative opening balance means customer owes us
-                    $isDebit = true;
-                    $debitAmount = abs($amount);
-                    $displayType = 'Opening Balance (Debit)';
-                    $badgeClass = 'badge-debit';
-                    $badgeText = 'OPENING DR';
-                }
-                $descriptionText = $description ?: 'Initial opening balance';
-            }
-            // Fallback
-            else {
-                if ($amount > 0) {
-                    $isCredit = true;
-                    $creditAmount = $amount;
-                    $displayType = 'Credit Entry';
-                    $badgeClass = 'badge-credit';
-                    $badgeText = 'CREDIT';
-                } else {
-                    $isDebit = true;
-                    $debitAmount = abs($amount);
-                    $displayType = 'Debit Entry';
-                    $badgeClass = 'badge-debit';
-                    $badgeText = 'DEBIT';
-                }
-                $descriptionText = $description ?: ucfirst($type);
-            }
-            
-            // Update running balance
-            // IMPORTANT: Debit INCREASES what customer owes us
-            // Credit DECREASES what customer owes us
-            if ($isDebit) {
-                $runningBalance += $amount;
-            } elseif ($isCredit) {
-                $runningBalance -= $amount;
-            }
-            
-            // Store transaction
-            $transactionsWithBalance[] = (object)[
-                'original' => $transaction,
-                'calculated_balance' => $runningBalance,
-                'is_debit' => $isDebit,
-                'is_credit' => $isCredit,
-                'debit_amount' => $debitAmount,
-                'credit_amount' => $creditAmount,
-                'display_type' => $displayType,
-                'badge_class' => $badgeClass,
-                'badge_text' => $badgeText,
-                'description_text' => $descriptionText,
-                'method' => $method,
-                'amount' => $amount
-            ];
-        }
+        // Use $allTransactions (passed from controller)
+        $transactions = $allTransactions ?? collect();
         
         // Calculate summary totals
         $totalDebits = 0;
         $totalCredits = 0;
         
-        foreach($transactionsWithBalance as $item) {
-            if ($item->is_debit) {
-                $totalDebits += $item->amount;
-            }
-            if ($item->is_credit) {
-                $totalCredits += $item->amount;
+        foreach($transactions as $transaction) {
+            $amount = floatval($transaction->amount);
+            $type = $transaction->type;
+            
+            if ($type == 'bill' || $type == 'debit') {
+                $totalDebits += $amount;
+            } elseif ($type == 'payment' || $type == 'credit') {
+                $totalCredits += $amount;
             }
         }
         
         $netBalance = $totalDebits - $totalCredits;
-        $finalBalance = $runningBalance;
     @endphp
 
     <div class="header">
@@ -417,20 +271,62 @@
             </tr>
         </thead>
         <tbody>
-            @forelse($transactionsWithBalance as $index => $item)
+            @forelse($transactions as $index => $transaction)
                 @php
-                    $transaction = $item->original;
-                    $currentBalance = $item->calculated_balance;
+                    $amount = floatval($transaction->amount);
+                    $type = $transaction->type;
+                    $description = $transaction->description ?? '';
+                    $debitAmount = 0;
+                    $creditAmount = 0;
+                    $displayType = '';
+                    $badgeClass = '';
+                    $badgeText = '';
+                    $currentBalance = isset($transaction->current_balance) ? floatval($transaction->current_balance) : 0;
                     
-                    // Get the date
-                    $transactionDate = $transaction->transaction_date ?? $transaction->date ?? $transaction->created_at ?? now();
+                    if ($type == 'bill' || $type == 'debit') {
+                        $debitAmount = $amount;
+                        $displayType = $type == 'bill' ? 'Sales Invoice' : 'Debit Entry';
+                        $badgeClass = 'badge-debit';
+                        $badgeText = $type == 'bill' ? 'SALES' : 'DEBIT';
+                        $descriptionText = $description ?: ($type == 'bill' ? 'Sales invoice' : 'Debit transaction');
+                    } elseif ($type == 'payment' || $type == 'credit') {
+                        $creditAmount = $amount;
+                        $displayType = $type == 'payment' ? 'Payment Received' : 'Credit Entry';
+                        $badgeClass = 'badge-credit';
+                        $badgeText = $type == 'payment' ? 'PAYMENT' : 'CREDIT';
+                        $descriptionText = $description ?: ($type == 'payment' ? 'Payment received' : 'Credit transaction');
+                    } elseif ($type == 'balance') {
+                        if ($amount > 0) {
+                            $creditAmount = $amount;
+                            $displayType = 'Opening Balance (Credit)';
+                            $badgeClass = 'badge-credit';
+                            $badgeText = 'OPENING CR';
+                        } else {
+                            $debitAmount = abs($amount);
+                            $displayType = 'Opening Balance (Debit)';
+                            $badgeClass = 'badge-debit';
+                            $badgeText = 'OPENING DR';
+                        }
+                        $descriptionText = $description ?: 'Initial opening balance';
+                    } else {
+                        if ($amount > 0) {
+                            $creditAmount = $amount;
+                            $displayType = 'Credit Entry';
+                            $badgeClass = 'badge-credit';
+                            $badgeText = 'CREDIT';
+                        } else {
+                            $debitAmount = abs($amount);
+                            $displayType = 'Debit Entry';
+                            $badgeClass = 'badge-debit';
+                            $badgeText = 'DEBIT';
+                        }
+                        $descriptionText = $description ?: ucfirst($type);
+                    }
                     
-                    // CORRECTED DR/CR Logic:
-                    // DR (Debit) = Negative balance = Customer owes us money
-                    // CR (Credit) = Positive balance = Customer has credit with us
                     $balanceDisplay = number_format(abs($currentBalance), 2);
                     $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
                     $balanceClass = $currentBalance < 0 ? 'negative-balance' : ($currentBalance > 0 ? 'positive-balance' : '');
+                    $transactionDate = $transaction->transaction_date ?? $transaction->date ?? $transaction->created_at ?? now();
                 @endphp
                 <tr>
                     <td style="text-align: center;">{{ $index + 1 }}</td>
@@ -441,27 +337,22 @@
                         </div>
                     </td>
                     <td>
-                        <strong>{{ $item->display_type }}</strong>
-                        @if($item->method)
-                            <div class="item-desc">Via: {{ ucfirst($item->method) }}</div>
+                        <strong>{{ $displayType }}</strong>
+                        @if($descriptionText && $descriptionText != $displayType)
+                            <div class="item-desc">{{ $descriptionText }}</div>
                         @endif
-                        @if($item->description_text && $item->description_text != $item->display_type)
-                            <div class="item-desc">{{ $item->description_text }}</div>
-                        @endif
-                        <span class="badge {{ $item->badge_class }}">{{ $item->badge_text }}</span>
+                        <span class="badge {{ $badgeClass }}">{{ $badgeText }}</span>
                     </td>
-                    <!-- DEBIT Column - Sales/Bills/Debit entries (Customer owes us) -->
                     <td class="amount-debit">
-                        @if($item->debit_amount > 0)
-                            {{ number_format($item->debit_amount, 2) }}
+                        @if($debitAmount > 0)
+                            {{ number_format($debitAmount, 2) }}
                         @else
                             —
                         @endif
                     </td>
-                    <!-- CREDIT Column - Payments received/Credit entries (Customer paid us) -->
                     <td class="amount-credit">
-                        @if($item->credit_amount > 0)
-                            {{ number_format($item->credit_amount, 2) }}
+                        @if($creditAmount > 0)
+                            {{ number_format($creditAmount, 2) }}
                         @else
                             —
                         @endif
@@ -494,18 +385,18 @@
         </div>
         <div class="summary-row">
             <span class="summary-label">Net Balance:</span>
-            <span class="summary-value {{ $finalBalance >= 0 ? 'positive-balance' : 'negative-balance' }}">
-                PKR {{ number_format(abs($finalBalance), 2) }} {{ $finalBalance >= 0 ? 'CR' : 'DR' }}
+            <span class="summary-value {{ $netBalance >= 0 ? 'positive-balance' : 'negative-balance' }}">
+                PKR {{ number_format(abs($netBalance), 2) }} {{ $netBalance >= 0 ? 'CR' : 'DR' }}
             </span>
         </div>
         <div class="summary-row">
             <span class="summary-label">Total Transactions:</span>
-            <span class="summary-value">{{ count($transactionsWithBalance) }}</span>
+            <span class="summary-value">{{ count($transactions) }}</span>
         </div>
     </div>
 
     <div class="footer">
-        <p>This statement contains {{ count($transactionsWithBalance) }} transaction(s) in chronological order.</p>
+        <p>This statement contains {{ count($transactions) }} transaction(s) in chronological order.</p>
         <p><strong>{{ $companySettings->name ?? 'Food Impex' }}</strong> - Generated on {{ now()->format('F j, Y \a\t g:i A') }}</p>
         <p style="font-size: 10px; color: #999;">* This is a system-generated document. No signature required. *</p>
     </div>

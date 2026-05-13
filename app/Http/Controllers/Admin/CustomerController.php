@@ -207,104 +207,61 @@ class CustomerController extends Controller
     }
 
     public function view(Request $request, string $uuid)
-    {
-        try {
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
+{
+    try {
+        $customer = Customer::where('uuid', $uuid)->firstOrFail();
 
-            $bill_from = $request->bill_from;
-            $bill_to = $request->bill_to;
-            $trans_from = $request->trans_from;
-            $trans_to = $request->trans_to;
+        $bill_from = $request->bill_from;
+        $bill_to = $request->bill_to;
+        $trans_from = $request->trans_from;
+        $trans_to = $request->trans_to;
 
-            // Get regular transactions (bills, payments, balance)
-            $transactionsQuery = $customer->customerTransactions();
-            
-            // Get general entries from daybooks
-            $generalEntries = collect([]);
-            
-            if (Schema::hasTable('daybooks')) {
-                $generalEntriesQuery = DB::table('daybooks')
-                    ->where('type', 'transaction')
-                    ->whereNotNull('customer_transaction_id')
-                    ->whereIn('customer_transaction_id', function($query) use ($customer) {
-                        $query->select('id')
-                            ->from('customer_transactions')
-                            ->where('customer_id', $customer->id);
-                    });
-                
-                // Apply date filters to general entries
-                if ($trans_from && $trans_to) {
-                    $generalEntriesQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-                } elseif ($trans_from) {
-                    $generalEntriesQuery->where('transaction_date', '>=', $trans_from);
-                } elseif ($trans_to) {
-                    $generalEntriesQuery->where('transaction_date', '<=', $trans_to);
-                }
-                
-                $generalEntryData = $generalEntriesQuery->orderBy('transaction_date', 'DESC')->get();
-                
-                foreach ($generalEntryData as $item) {
-                    $customerTransaction = CustomerTransaction::find($item->customer_transaction_id);
-                    if ($customerTransaction) {
-                        $generalEntries->push((object)[
-                            'id' => $item->id,
-                            'uuid' => 'daybook_' . $item->id,
-                            'transaction_date' => $item->transaction_date,
-                            'amount' => $item->amount,
-                            'type' => $customerTransaction->type == 'bill' ? 'general_debit' : 'general_credit',
-                            'description' => $item->description,
-                            'current_balance' => $customerTransaction->current_balance,
-                            'bill' => $customerTransaction->bill,
-                            'method' => $customerTransaction->receive_via,
-                            'entry_type' => $customerTransaction->type == 'bill' ? 'Debit Entry' : 'Credit Entry',
-                        ]);
-                    }
-                }
-            }
-            
-            // Apply date filters to regular transactions
-            if ($trans_from && $trans_to) {
-                $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-            } elseif ($trans_from) {
-                $transactionsQuery->where('transaction_date', '>=', $trans_from);
-            } elseif ($trans_to) {
-                $transactionsQuery->where('transaction_date', '<=', $trans_to);
-            }
-            
-            $regularTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')->get();
-            
-            // Merge and sort all transactions by date (newest first)
-            $allTransactions = $regularTransactions->concat($generalEntries);
-            $customerTransactions = $allTransactions->sortByDesc('transaction_date')->values();
-            
-            // Get bills with filters
-            $billsQuery = $customer->bills();
-            if ($bill_from && $bill_to) {
-                $billsQuery->whereBetween('bill_date', [$bill_from, $bill_to]);
-            } elseif ($bill_from) {
-                $billsQuery->where('bill_date', '>=', $bill_from);
-            } elseif ($bill_to) {
-                $billsQuery->where('bill_date', '<=', $bill_to);
-            }
-            $customerBills = $billsQuery->orderBy('bill_date', 'DESC')->get();
-
-            return view('admin.pages.customers.view', compact(
-                'customer',
-                'customerBills',
-                'customerTransactions',
-                'bill_from',
-                'bill_to',
-                'trans_from',
-                'trans_to'
-            ));
-        } catch (\Exception $e) {
-            Log::error('Failed to view customer: ' . $e->getMessage());
-            return redirect()->back()->with([
-                'status' => false,
-                'message' => 'Failed to view customer: ' . $e->getMessage(),
-            ]);
+        // Get ONLY customer transactions (bills, payments, balance, general entries)
+        // No need to fetch daybook entries separately as they are already in customer_transactions
+        $transactionsQuery = $customer->customerTransactions();
+        
+        // Apply date filters to transactions
+        if ($trans_from && $trans_to) {
+            $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
+        } elseif ($trans_from) {
+            $transactionsQuery->where('transaction_date', '>=', $trans_from);
+        } elseif ($trans_to) {
+            $transactionsQuery->where('transaction_date', '<=', $trans_to);
         }
+        
+        // Get transactions ordered by date (newest first for display)
+        $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get();
+        
+        // Get bills with filters
+        $billsQuery = $customer->bills();
+        if ($bill_from && $bill_to) {
+            $billsQuery->whereBetween('bill_date', [$bill_from, $bill_to]);
+        } elseif ($bill_from) {
+            $billsQuery->where('bill_date', '>=', $bill_from);
+        } elseif ($bill_to) {
+            $billsQuery->where('bill_date', '<=', $bill_to);
+        }
+        $customerBills = $billsQuery->orderBy('bill_date', 'DESC')->get();
+
+        return view('admin.pages.customers.view', compact(
+            'customer',
+            'customerBills',
+            'customerTransactions',
+            'bill_from',
+            'bill_to',
+            'trans_from',
+            'trans_to'
+        ));
+    } catch (\Exception $e) {
+        Log::error('Failed to view customer: ' . $e->getMessage());
+        return redirect()->back()->with([
+            'status' => false,
+            'message' => 'Failed to view customer: ' . $e->getMessage(),
+        ]);
     }
+}
 
     public function update(Request $request)
     {
@@ -509,8 +466,11 @@ class CustomerController extends Controller
         }
     }
 
-   /**
- * Generate Bank Statement View - Using Same Logic as view.blade.php
+ /**
+ * Display Bank Statement as HTML - Same logic as view page (NO duplicates)
+ */
+/**
+ * Display Bank Statement as HTML - Same logic as view page (NO duplicates)
  */
 public function bankStatement($uuid)
 {
@@ -521,59 +481,16 @@ public function bankStatement($uuid)
             return redirect()->route('customers.list')->with('error', 'Customer not found');
         }
 
-        // Get request filters (same as view.blade.php)
+        // Get request filters
         $bill_from = request()->bill_from;
         $bill_to = request()->bill_to;
         $trans_from = request()->trans_from;
         $trans_to = request()->trans_to;
 
-        // Get regular transactions (bills, payments, balance) - SAME LOGIC AS VIEW
+        // Get ONLY customer transactions (same as view page - NO daybook entries separately)
         $transactionsQuery = $customer->customerTransactions();
         
-        // Get general entries from daybooks - SAME LOGIC AS VIEW
-        $generalEntries = collect([]);
-        
-        if (Schema::hasTable('daybooks')) {
-            $generalEntriesQuery = DB::table('daybooks')
-                ->where('type', 'transaction')
-                ->whereNotNull('customer_transaction_id')
-                ->whereIn('customer_transaction_id', function($query) use ($customer) {
-                    $query->select('id')
-                        ->from('customer_transactions')
-                        ->where('customer_id', $customer->id);
-                });
-            
-            // Apply date filters to general entries
-            if ($trans_from && $trans_to) {
-                $generalEntriesQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-            } elseif ($trans_from) {
-                $generalEntriesQuery->where('transaction_date', '>=', $trans_from);
-            } elseif ($trans_to) {
-                $generalEntriesQuery->where('transaction_date', '<=', $trans_to);
-            }
-            
-            $generalEntryData = $generalEntriesQuery->orderBy('transaction_date', 'DESC')->get();
-            
-            foreach ($generalEntryData as $item) {
-                $customerTransaction = CustomerTransaction::find($item->customer_transaction_id);
-                if ($customerTransaction) {
-                    $generalEntries->push((object)[
-                        'id' => $item->id,
-                        'uuid' => 'daybook_' . $item->id,
-                        'transaction_date' => $item->transaction_date,
-                        'amount' => $item->amount,
-                        'type' => $customerTransaction->type == 'bill' ? 'general_debit' : 'general_credit',
-                        'description' => $item->description,
-                        'current_balance' => $customerTransaction->current_balance,
-                        'bill' => $customerTransaction->bill ?? null,
-                        'method' => $customerTransaction->method ?? null,
-                        'entry_type' => $customerTransaction->type == 'bill' ? 'Debit Entry' : 'Credit Entry',
-                    ]);
-                }
-            }
-        }
-        
-        // Apply date filters to regular transactions
+        // Apply date filters to transactions
         if ($trans_from && $trans_to) {
             $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
         } elseif ($trans_from) {
@@ -582,23 +499,28 @@ public function bankStatement($uuid)
             $transactionsQuery->where('transaction_date', '<=', $trans_to);
         }
         
-        $regularTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')->get();
-        
-        // Merge and sort all transactions by date (newest first for display, but we need oldest first for statement)
-        $allTransactions = $regularTransactions->concat($generalEntries);
-        
-        // For bank statement, we need transactions in ASCENDING order (oldest first)
-        $allTransactions = $allTransactions->sortBy('transaction_date')->values();
+        // Get transactions ordered by date (ASCENDING for statement - oldest first)
+        $allTransactions = $transactionsQuery->orderBy('transaction_date', 'ASC')
+            ->orderBy('id', 'ASC')
+            ->get();
 
-        // Calculate running balance (same logic as view but in forward order)
+        // Calculate running balance correctly
         $runningBalance = 0;
         foreach ($allTransactions as $transaction) {
-            if ($transaction->type == 'bill' || $transaction->type == 'general_debit') {
-                $runningBalance += floatval($transaction->amount);
-            } elseif ($transaction->type == 'payment' || $transaction->type == 'general_credit') {
-                $runningBalance -= floatval($transaction->amount);
-            } elseif ($transaction->type == 'balance') {
-                $runningBalance = floatval($transaction->amount);
+            $amount = floatval($transaction->amount);
+            $type = $transaction->type;
+            
+            // Debit (bill, debit) increases balance (customer owes more)
+            // Credit (payment, credit) decreases balance (customer pays)
+            if ($type == 'bill' || $type == 'debit') {
+                $runningBalance += $amount;
+                $transaction->transaction_type_display = 'debit';
+            } elseif ($type == 'payment' || $type == 'credit') {
+                $runningBalance -= $amount;
+                $transaction->transaction_type_display = 'credit';
+            } elseif ($type == 'balance') {
+                $runningBalance = $amount;
+                $transaction->transaction_type_display = $amount > 0 ? 'credit' : 'debit';
             }
             $transaction->current_balance = $runningBalance;
         }
@@ -631,9 +553,8 @@ public function bankStatement($uuid)
         return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
     }
 }
-
 /**
- * Generate Bank Statement PDF - Using Same Logic as view.blade.php
+ * Generate Bank Statement PDF - Same logic as view page (NO duplicates)
  */
 public function bankStatementPdf($uuid)
 {
@@ -644,16 +565,16 @@ public function bankStatementPdf($uuid)
             return redirect()->route('customers.list')->with('error', 'Customer not found');
         }
 
-        // Get request filters (same as view.blade.php)
+        // Get request filters
         $bill_from = request()->bill_from;
         $bill_to = request()->bill_to;
         $trans_from = request()->trans_from;
         $trans_to = request()->trans_to;
 
-        // Get regular transactions (bills, payments, balance)
+        // Get ONLY customer transactions (same as view page - NO daybook entries separately)
         $transactionsQuery = $customer->customerTransactions();
         
-        // Apply date filters to regular transactions
+        // Apply date filters to transactions
         if ($trans_from && $trans_to) {
             $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
         } elseif ($trans_from) {
@@ -662,107 +583,11 @@ public function bankStatementPdf($uuid)
             $transactionsQuery->where('transaction_date', '<=', $trans_to);
         }
         
-        $regularTransactions = $transactionsQuery->orderBy('transaction_date', 'ASC')->orderBy('id', 'ASC')->get();
-        
-        // Get general entries from daybooks
-        $generalEntries = collect([]);
-        
-        if (Schema::hasTable('daybooks')) {
-            $generalEntriesQuery = DB::table('daybooks')
-                ->where('type', 'transaction')
-                ->where(function($query) use ($customer) {
-                    $query->where('debit_type', 'customer')
-                          ->where('debit_id', $customer->id)
-                          ->orWhere(function($q) use ($customer) {
-                              $q->where('credit_type', 'customer')
-                                ->where('credit_id', $customer->id);
-                          });
-                });
-            
-            // Apply date filters to general entries
-            if ($trans_from && $trans_to) {
-                $generalEntriesQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-            } elseif ($trans_from) {
-                $generalEntriesQuery->where('transaction_date', '>=', $trans_from);
-            } elseif ($trans_to) {
-                $generalEntriesQuery->where('transaction_date', '<=', $trans_to);
-            }
-            
-            $generalEntryData = $generalEntriesQuery->orderBy('transaction_date', 'ASC')->orderBy('id', 'ASC')->get();
-            
-            foreach ($generalEntryData as $item) {
-                // Determine if this is debit or credit for the customer
-                $isDebit = ($item->debit_type == 'customer' && $item->debit_id == $customer->id);
-                $isCredit = ($item->credit_type == 'customer' && $item->credit_id == $customer->id);
-                
-                if ($isDebit || $isCredit) {
-                    $generalEntries->push((object)[
-                        'id' => $item->id,
-                        'uuid' => 'daybook_' . $item->id,
-                        'transaction_date' => $item->transaction_date,
-                        'amount' => $item->amount,
-                        'type' => $isDebit ? 'debit' : 'credit',
-                        'transaction_type' => $isDebit ? 'debit' : 'credit',
-                        'description' => $item->description,
-                        'current_balance' => 0, // Will be recalculated
-                        'bill' => null,
-                        'method' => null,
-                        'entry_type' => $isDebit ? 'Debit Entry' : 'Credit Entry',
-                        'created_at' => $item->created_at,
-                    ]);
-                }
-            }
-        }
-        
-        // Merge all transactions
-        $allTransactions = $regularTransactions->concat($generalEntries);
-        
-        // Sort by date ASCENDING (oldest first) for proper running balance calculation
-        $allTransactions = $allTransactions->sortBy(function($transaction) {
-            return $transaction->transaction_date;
-        })->values();
-        
-        // Calculate running balance correctly (FORWARD order)
-        $runningBalance = 0;
-        foreach ($allTransactions as $transaction) {
-            $amount = floatval($transaction->amount);
-            $type = $transaction->type ?? '';
-            $transactionType = $transaction->transaction_type ?? '';
-            
-            // Determine if this is a DEBIT or CREDIT
-            // DEBIT = Customer owes us (Sales/Bill) - INCREASES balance
-            // CREDIT = Customer paid us (Payment) - DECREASES balance
-            $isDebit = false;
-            $isCredit = false;
-            
-            if ($type == 'debit' || $transactionType == 'debit') {
-                $isDebit = true;
-            } elseif ($type == 'credit' || $transactionType == 'credit') {
-                $isCredit = true;
-            } elseif ($type == 'bill') {
-                $isDebit = true;
-            } elseif ($type == 'payment') {
-                $isCredit = true;
-            } elseif ($type == 'balance') {
-                // Opening balance - positive means credit (customer has credit), negative means debit (customer owes)
-                if ($amount > 0) {
-                    $isCredit = true;
-                } else {
-                    $isDebit = true;
-                    $amount = abs($amount);
-                }
-            }
-            
-            // Update running balance
-            if ($isDebit) {
-                $runningBalance += $amount;
-            } elseif ($isCredit) {
-                $runningBalance -= $amount;
-            }
-            
-            $transaction->current_balance = $runningBalance;
-        }
-        
+        // Get transactions ordered by date (newest first for display)
+        $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get();
+
         // Fetch Company Settings
         $companySettings = null;
         if (Schema::hasTable('companies')) {
@@ -780,7 +605,7 @@ public function bankStatementPdf($uuid)
 
         $pdf = Pdf::loadView('admin.pages.customers.bank-statement-pdf', compact(
             'customer',
-            'allTransactions',
+            'customerTransactions',
             'companySettings',
             'trans_from',
             'trans_to'

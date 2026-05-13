@@ -671,246 +671,173 @@ class CustomerBillController extends Controller
         }
     }
 
-    /**
-     * Generate Bank Statement PDF Report for Customer
-     */
-    public function bankStatementReport(string $uuid, Request $request)
-    {
-        try {
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
-            $fromDate = $request->from_date;
-            $toDate = $request->to_date;
-            
-            $query = $customer->customerTransactions()
-                ->with(['bill.billProducts.product'])
-                ->where('approval_status', 'approved');
-            
-            if ($fromDate && $toDate) {
-                $query->whereBetween('transaction_date', [$fromDate, $toDate]);
-            } elseif ($fromDate) {
-                $query->whereDate('transaction_date', '>=', $fromDate);
-            } elseif ($toDate) {
-                $query->whereDate('transaction_date', '<=', $toDate);
-            }
-            
-            $customerTransactions = $query->orderBy('transaction_date', 'DESC')->get();
-            
-            $companySettings = null;
-            if (Schema::hasTable('settings')) {
-                $companySettings = DB::table('settings')->first();
-            }
-            
-            if (!$companySettings) {
-                $companySettings = (object)[
-                    'name' => 'Food Impex',
-                    'logo' => null,
-                    'address' => 'Main Road, Sialkot, Pakistan',
-                    'mobile' => '+92 300 0000000',
-                ];
-            }
-            
-            $pdf = PDF::loadView('admin.pages.customers.bank-statement-pdf', compact(
-                'customer', 
-                'customerTransactions', 
-                'fromDate', 
-                'toDate', 
-                'companySettings'
-            ));
-            
-            return $pdf->download("bank-statement-" . preg_replace('/[^A-Za-z0-9-]/', '', $customer->name) . ".pdf");
-            
-        } catch (\Exception $e) {
-            \Log::error('Bank statement PDF error: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
+   /**
+ * Generate Bank Statement PDF Report for Customer
+ */
+public function bankStatementReport(string $uuid, Request $request)
+{
+    try {
+        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+        $fromDate = $request->from_date;
+        $toDate = $request->to_date;
+        
+        // Get ONLY customer transactions (same as view page)
+        $transactionsQuery = CustomerTransaction::where('customer_id', $customer->id);
+        
+        // Apply date filters
+        if ($fromDate && $toDate) {
+            $transactionsQuery->whereBetween('transaction_date', [$fromDate, $toDate]);
+        } elseif ($fromDate) {
+            $transactionsQuery->where('transaction_date', '>=', $fromDate);
+        } elseif ($toDate) {
+            $transactionsQuery->where('transaction_date', '<=', $toDate);
         }
+        
+        // Get transactions ordered by date
+        $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get();
+        
+        $companySettings = null;
+        if (Schema::hasTable('settings')) {
+            $companySettings = DB::table('settings')->first();
+        }
+        
+        if (!$companySettings) {
+            $companySettings = (object)[
+                'name' => 'Food Impex',
+                'logo' => null,
+                'address' => 'Main Road, Sialkot, Pakistan',
+                'mobile' => '+92 300 0000000',
+            ];
+        }
+        
+        $pdf = PDF::loadView('admin.pages.customers.bank-statement-pdf', compact(
+            'customer', 
+            'customerTransactions', 
+            'fromDate', 
+            'toDate', 
+            'companySettings'
+        ));
+        
+        return $pdf->download("bank-statement-" . preg_replace('/[^A-Za-z0-9-]/', '', $customer->name) . ".pdf");
+        
+    } catch (\Exception $e) {
+        \Log::error('Bank statement PDF error: ' . $e->getMessage());
+        return redirect()->back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
     }
+}
+/**
+ * Display Bank Statement as HTML Page - Same logic as view page
+ */
+public function bankStatementHtml(string $uuid, Request $request)
+{
+    try {
+        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+        $fromDate = $request->from_date;
+        $toDate = $request->to_date;
+        
+        // Get ONLY customer transactions (same as view page)
+        $transactionsQuery = CustomerTransaction::where('customer_id', $customer->id);
+        
+        // Apply date filters (same as view page)
+        if ($fromDate && $toDate) {
+            $transactionsQuery->whereBetween('transaction_date', [$fromDate, $toDate]);
+        } elseif ($fromDate) {
+            $transactionsQuery->where('transaction_date', '>=', $fromDate);
+        } elseif ($toDate) {
+            $transactionsQuery->where('transaction_date', '<=', $toDate);
+        }
+        
+        // Get transactions ordered by date (newest first for display - same as view page)
+        $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get();
+        
+        // Fetch Company Settings
+        $companySettings = null;
+        if (Schema::hasTable('settings')) {
+            $companySettings = DB::table('settings')->first();
+        }
+        
+        if (!$companySettings) {
+            $companySettings = (object)[
+                'name' => 'Food Impex',
+                'logo' => null,
+                'address' => 'Main Road, Sialkot, Pakistan',
+                'mobile' => '+92 300 0000000',
+            ];
+        }
+        
+        return view('admin.pages.customers.bank-statement-pdf', compact(
+            'customer', 
+            'customerTransactions', 
+            'fromDate', 
+            'toDate', 
+            'companySettings'
+        ));
+        
+    } catch (\Exception $e) {
+        \Log::error('bankStatementHtml error: ' . $e->getMessage());
+        return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
+    }
+}
 
-    /**
-     * Display Bank Statement as HTML Page
-     */
-    public function bankStatementHtml(string $uuid, Request $request)
-    {
-        try {
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
-            $fromDate = $request->from_date;
-            $toDate = $request->to_date;
-            
-            $regularTransactions = $customer->customerTransactions()
-                ->with(['bill.billProducts.product'])
-                ->where('approval_status', 'approved')
-                ->orderBy('transaction_date', 'DESC')
-                ->get();
-            
-            $generalEntries = collect([]);
-            
-            if (Schema::hasTable('daybooks')) {
-                $daybookQuery = DB::table('daybooks')
-                    ->where('type', 'transaction')
-                    ->whereNotNull('customer_transaction_id')
-                    ->whereIn('customer_transaction_id', function($query) use ($customer) {
-                        $query->select('id')
-                            ->from('customer_transactions')
-                            ->where('customer_id', $customer->id)
-                            ->where('approval_status', 'approved');
-                    });
-                
-                if ($fromDate && $toDate) {
-                    $daybookQuery->whereBetween('transaction_date', [$fromDate, $toDate]);
-                } elseif ($fromDate) {
-                    $daybookQuery->whereDate('transaction_date', '>=', $fromDate);
-                } elseif ($toDate) {
-                    $daybookQuery->whereDate('transaction_date', '<=', $toDate);
-                }
-                
-                $daybookEntries = $daybookQuery->orderBy('transaction_date', 'DESC')->get();
-                
-                foreach ($daybookEntries as $item) {
-                    $customerTransaction = CustomerTransaction::find($item->customer_transaction_id);
-                    
-                    if ($customerTransaction) {
-                        $generalEntries->push((object)[
-                            'id' => $item->id,
-                            'uuid' => 'daybook_' . $item->id,
-                            'transaction_date' => $item->transaction_date,
-                            'amount' => $item->amount,
-                            'type' => $customerTransaction->type == 'bill' ? 'general_debit' : 'general_credit',
-                            'description' => $item->description,
-                            'current_balance' => $customerTransaction->current_balance,
-                            'bill' => $customerTransaction->bill,
-                            'method' => $customerTransaction->receive_via,
-                            'entry_type' => $customerTransaction->type == 'bill' ? 'Debit Entry' : 'Credit Entry',
-                            'reference' => $item->reference_no ?? null,
-                            'remarks' => $item->remarks ?? null,
-                        ]);
-                    }
-                }
-            }
-            
-            $allTransactions = $regularTransactions->concat($generalEntries);
-            $customerTransactions = $allTransactions->sortByDesc(function($item) {
-                return $item->transaction_date;
-            })->values();
-            
-            $companySettings = null;
-            if (Schema::hasTable('settings')) {
-                $companySettings = DB::table('settings')->first();
-            }
-            
-            if (!$companySettings) {
-                $companySettings = (object)[
-                    'name' => 'Food Impex',
-                    'logo' => null,
-                    'address' => 'Main Road, Sialkot, Pakistan',
-                    'mobile' => '+92 300 0000000',
-                ];
-            }
-            
-            return view('admin.pages.customers.bank-statement-pdf', compact(
-                'customer', 
-                'customerTransactions', 
-                'fromDate', 
-                'toDate', 
-                'companySettings'
-            ));
-            
-        } catch (\Exception $e) {
-            \Log::error('bankStatementHtml error: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
+/**
+ * Download Bank Statement as PDF - Same logic as view page
+ */
+public function bankStatementPdf(string $uuid, Request $request)
+{
+    try {
+        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+        $fromDate = $request->from_date;
+        $toDate = $request->to_date;
+        
+        // Get ONLY customer transactions (same as view page)
+        $transactionsQuery = CustomerTransaction::where('customer_id', $customer->id);
+        
+        // Apply date filters (same as view page)
+        if ($fromDate && $toDate) {
+            $transactionsQuery->whereBetween('transaction_date', [$fromDate, $toDate]);
+        } elseif ($fromDate) {
+            $transactionsQuery->where('transaction_date', '>=', $fromDate);
+        } elseif ($toDate) {
+            $transactionsQuery->where('transaction_date', '<=', $toDate);
         }
-    }
-
-    /**
-     * Download Bank Statement as PDF
-     */
-    public function bankStatementPdf(string $uuid, Request $request)
-    {
-        try {
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
-            $fromDate = $request->from_date;
-            $toDate = $request->to_date;
-            
-            $regularTransactions = $customer->customerTransactions()
-                ->with(['bill.billProducts.product'])
-                ->where('approval_status', 'approved')
-                ->orderBy('transaction_date', 'DESC')
-                ->get();
-            
-            $generalEntries = collect([]);
-            
-            if (Schema::hasTable('daybooks')) {
-                $daybookQuery = DB::table('daybooks')
-                    ->where('type', 'transaction')
-                    ->whereNotNull('customer_transaction_id')
-                    ->whereIn('customer_transaction_id', function($query) use ($customer) {
-                        $query->select('id')
-                            ->from('customer_transactions')
-                            ->where('customer_id', $customer->id)
-                            ->where('approval_status', 'approved');
-                    });
-                
-                if ($fromDate && $toDate) {
-                    $daybookQuery->whereBetween('transaction_date', [$fromDate, $toDate]);
-                } elseif ($fromDate) {
-                    $daybookQuery->whereDate('transaction_date', '>=', $fromDate);
-                } elseif ($toDate) {
-                    $daybookQuery->whereDate('transaction_date', '<=', $toDate);
-                }
-                
-                $daybookEntries = $daybookQuery->orderBy('transaction_date', 'DESC')->get();
-                
-                foreach ($daybookEntries as $item) {
-                    $customerTransaction = CustomerTransaction::find($item->customer_transaction_id);
-                    
-                    if ($customerTransaction) {
-                        $generalEntries->push((object)[
-                            'id' => $item->id,
-                            'uuid' => 'daybook_' . $item->id,
-                            'transaction_date' => $item->transaction_date,
-                            'amount' => $item->amount,
-                            'type' => $customerTransaction->type == 'bill' ? 'general_debit' : 'general_credit',
-                            'description' => $item->description,
-                            'current_balance' => $customerTransaction->current_balance,
-                            'bill' => $customerTransaction->bill,
-                            'method' => $customerTransaction->receive_via,
-                            'entry_type' => $customerTransaction->type == 'bill' ? 'Debit Entry' : 'Credit Entry',
-                            'reference' => $item->reference_no ?? null,
-                        ]);
-                    }
-                }
-            }
-            
-            $allTransactions = $regularTransactions->concat($generalEntries);
-            $customerTransactions = $allTransactions->sortByDesc(function($item) {
-                return $item->transaction_date;
-            })->values();
-            
-            $companySettings = null;
-            if (Schema::hasTable('settings')) {
-                $companySettings = DB::table('settings')->first();
-            }
-            
-            if (!$companySettings) {
-                $companySettings = (object)[
-                    'name' => 'Food Impex',
-                    'logo' => null,
-                    'address' => 'Main Road, Sialkot, Pakistan',
-                    'mobile' => '+92 300 0000000',
-                ];
-            }
-            
-            $pdf = PDF::loadView('admin.pages.customers.bank-statement-pdf', compact(
-                'customer', 
-                'customerTransactions', 
-                'fromDate', 
-                'toDate', 
-                'companySettings'
-            ));
-            
-            return $pdf->download("bank-statement-{$customer->name}.pdf");
-            
-        } catch (\Exception $e) {
-            \Log::error('bankStatementPdf error: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
+        
+        // Get transactions ordered by date (newest first for display - same as view page)
+        $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get();
+        
+        // Fetch Company Settings
+        $companySettings = null;
+        if (Schema::hasTable('settings')) {
+            $companySettings = DB::table('settings')->first();
         }
+        
+        if (!$companySettings) {
+            $companySettings = (object)[
+                'name' => 'Food Impex',
+                'logo' => null,
+                'address' => 'Main Road, Sialkot, Pakistan',
+                'mobile' => '+92 300 0000000',
+            ];
+        }
+        
+        $pdf = PDF::loadView('admin.pages.customers.bank-statement-pdf', compact(
+            'customer', 
+            'customerTransactions', 
+            'fromDate', 
+            'toDate', 
+            'companySettings'
+        ));
+        
+        return $pdf->download("bank-statement-{$customer->name}.pdf");
+        
+    } catch (\Exception $e) {
+        \Log::error('bankStatementPdf error: ' . $e->getMessage());
+        return redirect()->back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
     }
+}
 }
