@@ -133,78 +133,76 @@ class CustomerBillController extends Controller
     /**
      * Approve a pending payment (Admin only) - Updates Customer Balance & Bank/Cash
      */
-    public function approvePayment($uuid)
-    {
-        if (!$this->isAdmin()) {
+   public function approvePayment($uuid)
+{
+    if (!$this->isAdmin()) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Access Denied. Only Admin can approve payments.'
+        ], 403);
+    }
+
+    try {
+        DB::beginTransaction();
+        
+        $payment = CustomerTransaction::where('uuid', $uuid)->firstOrFail();
+        
+        if ($payment->approval_status === 'approved') {
             return response()->json([
                 'success' => false,
-                'message' => 'Access Denied. Only Admin can approve payments.'
-            ], 403);
+                'message' => 'Payment already approved.'
+            ], 400);
         }
-
-        try {
-            DB::beginTransaction();
+        
+        $payment->approval_status = 'approved';
+        $payment->save();
+        
+        // Balance is already updated when payment was created
+        // Just update Bank or Cash balance now
+        $customer = $payment->customer;
+        
+        if ($payment->receive_via == 'bank') {
+            $bank = Bank::findOrFail($payment->bank_id);
+            $bank->increment('account_balance', $payment->amount);
             
-            $payment = CustomerTransaction::where('uuid', $uuid)->firstOrFail();
-            
-            if ($payment->approval_status === 'approved') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Payment already approved.'
-                ], 400);
-            }
-            
-            $payment->approval_status = 'approved';
-            $payment->save();
-            
-            // Update customer balance (decrease balance - customer paid)
-            $customer = $payment->customer;
-            $customer->decrement('balance', $payment->amount);
-            $payment->current_balance = $customer->balance;
-            $payment->save();
-            
-            // Update Bank or Cash balance
-            if ($payment->receive_via == 'bank') {
-                $bank = Bank::findOrFail($payment->bank_id);
-                $bank->increment('account_balance', $payment->amount);
-                
-                // Update bank transaction record
-                BankTransaction::where('customer_transaction_id', $payment->id)->update([
-                    'balance' => $bank->account_balance,
-                    'description' => 'Payment received from ' . ($customer->name ?? 'Customer') . ' (Approved)',
-                ]);
-            } else {
-                $cash = Cash::first();
-                $cash->increment('balance', $payment->amount);
-                
-                // Update cash transaction record
-                CashTransaction::where('customer_transaction_id', $payment->id)->update([
-                    'balance' => $cash->balance,
-                    'description' => 'Payment received from ' . ($customer->name ?? 'Customer') . ' (Approved)',
-                ]);
-            }
-            
-            // Update daybook description
-            Daybook::where('customer_transaction_id', $payment->id)->update([
+            // Update bank transaction record
+            BankTransaction::where('customer_transaction_id', $payment->id)->update([
+                'balance' => $bank->account_balance,
                 'description' => 'Payment received from ' . ($customer->name ?? 'Customer') . ' (Approved)',
             ]);
+        } else {
+            $cash = Cash::first();
+            $cash->increment('balance', $payment->amount);
             
-            DB::commit();
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Payment approved successfully. Customer balance updated.'
+            // Update cash transaction record
+            CashTransaction::where('customer_transaction_id', $payment->id)->update([
+                'balance' => $cash->balance,
+                'description' => 'Payment received from ' . ($customer->name ?? 'Customer') . ' (Approved)',
             ]);
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Approve Payment Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Approval failed: ' . $e->getMessage()
-            ], 500);
         }
+        
+        // Update daybook description
+        Daybook::where('customer_transaction_id', $payment->id)->update([
+            'description' => 'Payment received from ' . ($customer->name ?? 'Customer') . ' (Approved)',
+            'approval_status' => 'approved',
+        ]);
+        
+        DB::commit();
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Payment approved successfully.'
+        ]);
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Approve Payment Error: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Approval failed: ' . $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * Delete an invoice (Admin only)
@@ -583,82 +581,98 @@ class CustomerBillController extends Controller
     }
 
     public function storeReceivePayment(Request $request, string $uuid)
-    {
-        try {
-            DB::beginTransaction();
+{
+    try {
+        DB::beginTransaction();
 
-            $customer = Customer::where('uuid', $uuid)->firstOrFail();
-
-            // Create payment with PENDING status - NO BALANCE UPDATE YET
-            $customerTransaction = CustomerTransaction::create([
-                'uuid' => (string) Str::uuid(),
-                'customer_id' => $customer->id,
-                'transaction_date' => $request->transaction_date,
-                'amount' => $request->amount,
-                'type' => 'payment',
-                'approval_status' => 'pending', // Pending approval
-                'receive_via' => $request->receive_via,
-                'bank_id' => $request->bank_id,
-                'description' => 'Payment received from ' . $customer->name . ' (Pending Approval)',
-                'current_balance' => $customer->balance, // Balance not updated yet
-            ]);
-
-            // Store bank or cash transaction (but don't update actual balance yet)
-            if ($request->receive_via == 'bank') {
-                $bank = Bank::findOrFail($request->bank_id);
-                BankTransaction::create([
-                    'bank_id' => $bank->id,
-                    'customer_transaction_id' => $customerTransaction->id,
-                    'amount' => $request->amount,
-                    'balance' => $bank->account_balance,
-                    'transaction_type' => 'credit',
-                    'description' => 'Payment received from ' . $customer->name . ' (Pending Approval)',
-                ]);
-            } else {
-                $cash = Cash::first();
-                CashTransaction::create([
-                    'cash_id' => $cash->id,
-                    'customer_transaction_id' => $customerTransaction->id,
-                    'transaction_type' => 'credit',
-                    'amount' => $request->amount,
-                    'balance' => $cash->balance,
-                    'description' => 'Payment received from ' . $customer->name . ' (Pending Approval)',
-                ]);
-            }
-
-            Daybook::create([
-                'transaction_date' => $request->transaction_date,
-                'description' => 'Payment received from ' . $customer->name . ' (Pending Approval)',
-                'amount' => $request->amount,
+        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+        $amount = floatval($request->amount);
+        
+        // Get current customer balance
+        $oldBalance = $customer->balance;
+        
+        // Calculate new balance (payment DECREASES what customer owes)
+        // If customer owes us (positive balance), payment reduces it
+        // If customer has credit (negative balance), payment increases credit (makes it more negative)
+        $newBalance = $oldBalance + $amount;
+        
+        // Create payment with PENDING status but UPDATE BALANCE IMMEDIATELY
+        $customerTransaction = CustomerTransaction::create([
+            'uuid' => (string) Str::uuid(),
+            'customer_id' => $customer->id,
+            'transaction_date' => $request->transaction_date,
+            'amount' => $amount,
+            'type' => 'payment',
+            'approval_status' => 'pending', // Pending approval
+            'receive_via' => $request->receive_via,
+            'bank_id' => $request->bank_id,
+            'description' => 'Payment received from ' . $customer->name . ' (Pending Approval)',
+            'current_balance' => $newBalance, // Updated balance
+        ]);
+        
+        // UPDATE CUSTOMER BALANCE IMMEDIATELY
+        $customer->update(['balance' => $newBalance]);
+        
+        // Store bank or cash transaction (but don't update actual bank/cash balance yet)
+        if ($request->receive_via == 'bank') {
+            $bank = Bank::findOrFail($request->bank_id);
+            BankTransaction::create([
+                'bank_id' => $bank->id,
                 'customer_transaction_id' => $customerTransaction->id,
-                'type' => 'transaction',
+                'amount' => $amount,
+                'balance' => $bank->account_balance, // Current bank balance (not updated yet)
+                'transaction_type' => 'credit',
+                'description' => 'Payment received from ' . $customer->name . ' (Pending Approval)',
             ]);
-
-            if ($request->hasFile('receipt_images')) {
-                foreach ($request->file('receipt_images') as $image) {
-                    $imagePath = $image->store('customer_transactions_payments', 'public');
-                    CustomerTransactionImage::create([
-                        'customer_transaction_id' => $customerTransaction->id,
-                        'image' => $imagePath,
-                        'date' => $request->transaction_date,
-                        'customer_id' => $customer->id,
-                    ]);
-                }
-            }
-
-            DB::commit();
-            return response()->json([
-                'status' => true,
-                'message' => 'Payment recorded successfully! Awaiting admin approval.',
-            ]);
-        } catch (\Throwable $th) {
-            DB::rollBack();
-            return response()->json([
-                'status' => false,
-                'message' => 'Failed to receive payment: ' . $th->getMessage(),
+        } else {
+            $cash = Cash::first();
+            CashTransaction::create([
+                'cash_id' => $cash->id,
+                'customer_transaction_id' => $customerTransaction->id,
+                'transaction_type' => 'credit',
+                'amount' => $amount,
+                'balance' => $cash->balance, // Current cash balance (not updated yet)
+                'description' => 'Payment received from ' . $customer->name . ' (Pending Approval)',
             ]);
         }
+
+        Daybook::create([
+            'transaction_date' => $request->transaction_date,
+            'description' => 'Payment received from ' . $customer->name . ' (Pending Approval)',
+            'amount' => $amount,
+            'customer_transaction_id' => $customerTransaction->id,
+            'type' => 'transaction',
+            'approval_status' => 'pending',
+        ]);
+
+        if ($request->hasFile('receipt_images')) {
+            foreach ($request->file('receipt_images') as $image) {
+                $imagePath = $image->store('customer_transactions_payments', 'public');
+                CustomerTransactionImage::create([
+                    'customer_transaction_id' => $customerTransaction->id,
+                    'image' => $imagePath,
+                    'date' => $request->transaction_date,
+                    'customer_id' => $customer->id,
+                ]);
+            }
+        }
+
+        DB::commit();
+        
+        return response()->json([
+            'status' => true,
+            'message' => 'Payment recorded successfully! Customer balance updated.',
+            'new_balance' => $newBalance
+        ]);
+        
+    } catch (\Throwable $th) {
+        DB::rollBack();
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to receive payment: ' . $th->getMessage(),
+        ]);
     }
+}
 
     public function showReceivePayment($uuid)
     {
