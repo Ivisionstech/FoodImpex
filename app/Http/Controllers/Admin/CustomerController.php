@@ -650,20 +650,33 @@ public function bankStatementPdf($uuid)
         $trans_from = request()->trans_from;
         $trans_to = request()->trans_to;
 
-        // Get regular transactions (bills, payments, balance) - SAME LOGIC AS VIEW
+        // Get regular transactions (bills, payments, balance)
         $transactionsQuery = $customer->customerTransactions();
         
-        // Get general entries from daybooks - SAME LOGIC AS VIEW
+        // Apply date filters to regular transactions
+        if ($trans_from && $trans_to) {
+            $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
+        } elseif ($trans_from) {
+            $transactionsQuery->where('transaction_date', '>=', $trans_from);
+        } elseif ($trans_to) {
+            $transactionsQuery->where('transaction_date', '<=', $trans_to);
+        }
+        
+        $regularTransactions = $transactionsQuery->orderBy('transaction_date', 'ASC')->orderBy('id', 'ASC')->get();
+        
+        // Get general entries from daybooks
         $generalEntries = collect([]);
         
         if (Schema::hasTable('daybooks')) {
             $generalEntriesQuery = DB::table('daybooks')
                 ->where('type', 'transaction')
-                ->whereNotNull('customer_transaction_id')
-                ->whereIn('customer_transaction_id', function($query) use ($customer) {
-                    $query->select('id')
-                        ->from('customer_transactions')
-                        ->where('customer_id', $customer->id);
+                ->where(function($query) use ($customer) {
+                    $query->where('debit_type', 'customer')
+                          ->where('debit_id', $customer->id)
+                          ->orWhere(function($q) use ($customer) {
+                              $q->where('credit_type', 'customer')
+                                ->where('credit_id', $customer->id);
+                          });
                 });
             
             // Apply date filters to general entries
@@ -675,55 +688,81 @@ public function bankStatementPdf($uuid)
                 $generalEntriesQuery->where('transaction_date', '<=', $trans_to);
             }
             
-            $generalEntryData = $generalEntriesQuery->orderBy('transaction_date', 'DESC')->get();
+            $generalEntryData = $generalEntriesQuery->orderBy('transaction_date', 'ASC')->orderBy('id', 'ASC')->get();
             
             foreach ($generalEntryData as $item) {
-                $customerTransaction = CustomerTransaction::find($item->customer_transaction_id);
-                if ($customerTransaction) {
+                // Determine if this is debit or credit for the customer
+                $isDebit = ($item->debit_type == 'customer' && $item->debit_id == $customer->id);
+                $isCredit = ($item->credit_type == 'customer' && $item->credit_id == $customer->id);
+                
+                if ($isDebit || $isCredit) {
                     $generalEntries->push((object)[
                         'id' => $item->id,
                         'uuid' => 'daybook_' . $item->id,
                         'transaction_date' => $item->transaction_date,
                         'amount' => $item->amount,
-                        'type' => $customerTransaction->type == 'bill' ? 'general_debit' : 'general_credit',
+                        'type' => $isDebit ? 'debit' : 'credit',
+                        'transaction_type' => $isDebit ? 'debit' : 'credit',
                         'description' => $item->description,
-                        'current_balance' => $customerTransaction->current_balance,
-                        'bill' => $customerTransaction->bill ?? null,
-                        'method' => $customerTransaction->method ?? null,
-                        'entry_type' => $customerTransaction->type == 'bill' ? 'Debit Entry' : 'Credit Entry',
+                        'current_balance' => 0, // Will be recalculated
+                        'bill' => null,
+                        'method' => null,
+                        'entry_type' => $isDebit ? 'Debit Entry' : 'Credit Entry',
+                        'created_at' => $item->created_at,
                     ]);
                 }
             }
         }
         
-        // Apply date filters to regular transactions
-        if ($trans_from && $trans_to) {
-            $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-        } elseif ($trans_from) {
-            $transactionsQuery->where('transaction_date', '>=', $trans_from);
-        } elseif ($trans_to) {
-            $transactionsQuery->where('transaction_date', '<=', $trans_to);
-        }
-        
-        $regularTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')->get();
-        
-        // Merge and sort all transactions by date (oldest first for statement)
+        // Merge all transactions
         $allTransactions = $regularTransactions->concat($generalEntries);
-        $allTransactions = $allTransactions->sortBy('transaction_date')->values();
-
-        // Calculate running balance (same logic as view but in forward order)
+        
+        // Sort by date ASCENDING (oldest first) for proper running balance calculation
+        $allTransactions = $allTransactions->sortBy(function($transaction) {
+            return $transaction->transaction_date;
+        })->values();
+        
+        // Calculate running balance correctly (FORWARD order)
         $runningBalance = 0;
         foreach ($allTransactions as $transaction) {
-            if ($transaction->type == 'bill' || $transaction->type == 'general_debit') {
-                $runningBalance += floatval($transaction->amount);
-            } elseif ($transaction->type == 'payment' || $transaction->type == 'general_credit') {
-                $runningBalance -= floatval($transaction->amount);
-            } elseif ($transaction->type == 'balance') {
-                $runningBalance = floatval($transaction->amount);
+            $amount = floatval($transaction->amount);
+            $type = $transaction->type ?? '';
+            $transactionType = $transaction->transaction_type ?? '';
+            
+            // Determine if this is a DEBIT or CREDIT
+            // DEBIT = Customer owes us (Sales/Bill) - INCREASES balance
+            // CREDIT = Customer paid us (Payment) - DECREASES balance
+            $isDebit = false;
+            $isCredit = false;
+            
+            if ($type == 'debit' || $transactionType == 'debit') {
+                $isDebit = true;
+            } elseif ($type == 'credit' || $transactionType == 'credit') {
+                $isCredit = true;
+            } elseif ($type == 'bill') {
+                $isDebit = true;
+            } elseif ($type == 'payment') {
+                $isCredit = true;
+            } elseif ($type == 'balance') {
+                // Opening balance - positive means credit (customer has credit), negative means debit (customer owes)
+                if ($amount > 0) {
+                    $isCredit = true;
+                } else {
+                    $isDebit = true;
+                    $amount = abs($amount);
+                }
             }
+            
+            // Update running balance
+            if ($isDebit) {
+                $runningBalance += $amount;
+            } elseif ($isCredit) {
+                $runningBalance -= $amount;
+            }
+            
             $transaction->current_balance = $runningBalance;
         }
-
+        
         // Fetch Company Settings
         $companySettings = null;
         if (Schema::hasTable('companies')) {
@@ -751,6 +790,7 @@ public function bankStatementPdf($uuid)
 
     } catch (\Exception $e) {
         \Log::error('Bank Statement PDF Error: ' . $e->getMessage());
+        \Log::error($e->getTraceAsString());
         return redirect()->back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
     }
 }

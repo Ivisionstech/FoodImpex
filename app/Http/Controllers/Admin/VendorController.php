@@ -26,6 +26,7 @@ class VendorController extends Controller
             ]);
         }
     }
+    
     public function list()
     {
         try {
@@ -39,6 +40,7 @@ class VendorController extends Controller
             ]);
         }
     }
+    
     public function store(StoreRequest $request)
     {
         try {
@@ -63,7 +65,8 @@ class VendorController extends Controller
                 'uuid' => Str::uuid(),
                 'date' => $request->open_balance_date ?? now(),
                 'amount' => $request->balance,
-                'type' => 'Balance',
+                'type' => 'balance',  // Changed from 'Balance' to 'balance' for consistency
+                'transaction_type' => $request->balance >= 0 ? 'credit' : 'debit', // Add transaction_type
                 'current_balance' => $request->balance,
                 'vendor_id' => $vendor->id,
             ]);
@@ -82,6 +85,7 @@ class VendorController extends Controller
             ]);
         }
     }
+    
     public function view(Request $request, $uuid)
     {
         try {
@@ -119,8 +123,9 @@ class VendorController extends Controller
                 $transactionsQuery->where('date', '<=', $trans_to);
             }
 
+            // FIXED: Order by date ASCENDING (oldest first) for proper running balance display
             $vendorBills = $billsQuery->orderBy('date', 'DESC')->get();
-            $vendorTransactions = $transactionsQuery->orderBy('date', 'DESC')->get();
+            $vendorTransactions = $transactionsQuery->orderBy('date', 'ASC')->orderBy('id', 'ASC')->get();
 
             return view('admin.pages.vendors.view', compact(
                 'vendor',
@@ -139,9 +144,9 @@ class VendorController extends Controller
             ]);
         }
     }
+    
     public function edit($uuid)
     {
-
         try {
             $vendor = Vendor::where('uuid', $uuid)->first();
             if ($vendor) {
@@ -160,6 +165,7 @@ class VendorController extends Controller
             ]);
         }
     }
+    
     public function update(Request $request)
     {
         try {
@@ -205,6 +211,7 @@ class VendorController extends Controller
             ]);
         }
     }
+    
     public function delete($uuid)
     {
         try {
@@ -217,7 +224,7 @@ class VendorController extends Controller
                 DB::commit();
                 return response()->json([
                     'status' => true,
-                    'message' => 'Deleted sucessfully'
+                    'message' => 'Deleted successfully'
                 ]);
             } else {
                 DB::rollBack();
@@ -247,11 +254,12 @@ class VendorController extends Controller
                 ]);
             }
 
+            // FIXED: Order by date ASCENDING for proper chronological statement
             $vendorTransactions = $vendor->vendorTransactions()
                 ->with(['bill.billProducts.product'])
                 ->orderBy('date', 'ASC')
+                ->orderBy('id', 'ASC')
                 ->get();
-
 
             return view('admin.pages.vendors.bank-statement-pdf', compact('vendor', 'vendorTransactions'));
         } catch (\Throwable $th) {

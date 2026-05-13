@@ -91,7 +91,7 @@
                                         <i class="bx bx-x me-1"></i> Cancel
                                     </a>
                                     <button type="submit" class="btn btn-primary" id="submitBtn">
-                                        <i class="bx bx-save me-1"></i> Save Journal Entry
+                                        <i class="bx bx-save me-1"></i> Save Entry
                                     </button>
                                 </div>
                             </div>
@@ -386,20 +386,12 @@
                                 <label class="form-label"><i class="fas fa-search me-1"></i> Account</label>
                                 <select class="form-select account-select" name="account_ids[]" data-row="${rowId}" style="width: 100%;">
                                     <option value="">🔍 Search by name...</option>
-                                    <optgroup label="👥 CUSTOMERS">${customersHtml}</optgroup>
-                                    <optgroup label="🚚 VENDORS">${vendorsHtml}</optgroup>
-                                    <optgroup label="🏦 BANKS">${banksHtml}</optgroup>
-                                    <optgroup label="💰 CASH">${cashHtml}</optgroup>
-                                    <optgroup label="📄 EXPENSES">${expensesHtml}</optgroup>
+                                    <optgroup label="CUSTOMERS">${customersHtml}</optgroup>
+                                    <optgroup label="VENDORS">${vendorsHtml}</optgroup>
+                                    <optgroup label="BANKS">${banksHtml}</optgroup>
+                                    <optgroup label="CASH">${cashHtml}</optgroup>
+                                    <optgroup label="EXPENSES">${expensesHtml}</optgroup>
                                 </select>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label text-danger"><i class="fas fa-arrow-down me-1"></i> Debit (Money Out)</label>
-                                <div class="input-group">
-                                    <span class="input-group-text bg-transparent">PKR</span>
-                                    <input type="number" class="form-control amount-input debit-amount" name="debit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${debitValue}" data-row="${rowId}">
-                                </div>
-                                <small class="text-muted" style="font-size: 10px;">If > balance, creates due</small>
                             </div>
                             <div class="col-md-2">
                                 <label class="form-label text-success"><i class="fas fa-arrow-up me-1"></i> Credit (Money In)</label>
@@ -407,7 +399,13 @@
                                     <span class="input-group-text bg-transparent">PKR</span>
                                     <input type="number" class="form-control amount-input credit-amount" name="credit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${creditValue}" data-row="${rowId}">
                                 </div>
-                                <small class="text-muted" style="font-size: 10px;">Increases balance</small>
+                            </div>
+                             <div class="col-md-2">
+                                <label class="form-label text-danger"><i class="fas fa-arrow-down me-1"></i> Debit (Money Out)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-transparent">PKR</span>
+                                    <input type="number" class="form-control amount-input debit-amount" name="debit_amounts[]" step="0.01" min="0" placeholder="0.00" value="${debitValue}" data-row="${rowId}">
+                                </div>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label"><i class="fas fa-align-left me-1"></i> Description</label>
