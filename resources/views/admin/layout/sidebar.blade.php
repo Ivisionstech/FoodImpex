@@ -82,12 +82,12 @@
                         <div>All Bills</div>
                     </a>
                 </li>
-
+<!-- 
                 <li class="menu-item {{ request()->routeIs('vendors.payments.list') ? 'active' : '' }}">
                     <a href="{{ route('vendors.payments.list') }}" class="menu-link">
                         <div>Send Payments</div>
                     </a>
-                </li>
+                </li> -->
             </ul>
         </li>
 
@@ -109,18 +109,18 @@
                         <div>All Invoices</div>
                     </a>
                 </li>
-
+<!-- 
                 <li class="menu-item {{ request()->routeIs('quotations.list') ? 'active' : '' }}">
                     <a href="{{ route('quotations.list') }}" class="menu-link">
                         <div>Quotations</div>
                     </a>
-                </li>
+                </li> -->
 
-                <li class="menu-item {{ request()->routeIs('customers.receive-payment.list') ? 'active' : '' }}">
+                <!-- <li class="menu-item {{ request()->routeIs('customers.receive-payment.list') ? 'active' : '' }}">
                     <a href="{{ route('customers.receive-payment.list') }}" class="menu-link">
                         <div>Received Payment</div>
                     </a>
-                </li>
+                </li> -->
             </ul>
         </li>
 

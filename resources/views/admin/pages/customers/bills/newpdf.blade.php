@@ -221,7 +221,7 @@
                 </td>
                 <td style="width: 60%; text-align: center; vertical-align: middle;">
                     <div class="info-title" style="text-align: center; margin: 0;">
-                        {{ $companySettings->name ?? 'Intekhab Sanitary Fittings' }}
+                        {{ $companySettings->name ?? 'Food Impex' }}
                     </div>
                     <div
                         style="width: 80%; height: 2px; background: linear-gradient(to right, #dc2526, transparent); margin: 3px auto 0;">
@@ -247,7 +247,7 @@
                         </tr>
                         <tr>
                             <td style="background: #fff; border: 1px solid #dee2e6; padding: 8px;">
-                                {{ $companySettings->name ?? 'Intekhab Sanitary Fittings' }}
+                                {{ $companySettings->name ?? 'Food Impex' }}
                             </td>
                         </tr>
                         <tr>
