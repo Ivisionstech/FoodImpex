@@ -343,13 +343,23 @@ public function downloadBankStatement(Request $request, $uuid)
             ->get();
 
         // =============================================
+        // FILTER OUT BILL TYPE TRANSACTIONS
+        // ONLY SHOW GENERAL ENTRIES IN BANK STATEMENT
+        // =============================================
+        $filteredTransactions = $vendorTransactions->filter(function ($transaction) {
+            $type = strtolower($transaction->type ?? '');
+            // Skip bill type transactions
+            return $type != 'bill';
+        });
+
+        // =============================================
         // CALCULATE RUNNING BALANCE
         // ONLY APPROVED TRANSACTIONS AFFECT BALANCE
         // =============================================
         $runningBalance = 0;
         $transactionsWithBalance = [];
 
-        foreach ($vendorTransactions as $transaction) {
+        foreach ($filteredTransactions as $transaction) {
             $amount = floatval($transaction->amount);
             $type = strtolower($transaction->type ?? '');
             $approvalStatus = $transaction->approval_status ?? 'pending';
@@ -361,10 +371,7 @@ public function downloadBankStatement(Request $request, $uuid)
             // ONLY APPROVED TRANSACTIONS AFFECT BALANCE
             // =============================================
             if ($isApproved) {
-                if ($type == 'bill') {
-                    // Bill = Money IN = ADD to balance
-                    $runningBalance += $amount;
-                } elseif ($type == 'payment') {
+                if ($type == 'payment') {
                     // Payment = Money OUT = SUBTRACT from balance
                     $runningBalance -= $amount;
                 } elseif ($type == 'balance') {
@@ -439,9 +446,7 @@ public function downloadBankStatement(Request $request, $uuid)
             
             if (!$isApproved) continue;
             
-            if ($type == 'bill') {
-                $totalCredits += $amount;
-            } elseif ($type == 'payment') {
+            if ($type == 'payment') {
                 $totalDebits += $amount;
             } elseif ($type == 'balance') {
                 if (stripos($description, 'Opening Balance') !== false) {
@@ -467,6 +472,8 @@ public function downloadBankStatement(Request $request, $uuid)
             } elseif ($type == 'credit') {
                 $totalCredits += $amount;
             } elseif ($type == 'debit') {
+                $totalDebits += $amount;
+            } elseif ($type == 'return') {
                 $totalDebits += $amount;
             }
         }

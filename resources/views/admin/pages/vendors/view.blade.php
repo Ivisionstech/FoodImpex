@@ -113,120 +113,17 @@
             </div>
         </div>
 
-        <!-- Vendor Bills Section -->
-        <div class="card mt-5">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Vendors Bills</h5>
-                <div class="d-flex gap-2">
-                    <form method="GET" action="{{ route('vendors.view', $vendor->uuid) }}" class="d-flex gap-2">
-                        <input type="hidden" name="trans_from" value="{{ $trans_from }}">
-                        <input type="hidden" name="trans_to" value="{{ $trans_to }}">
-                        <input type="date" name="bill_from" class="form-control" value="{{ $bill_from }}">
-                        <input type="date" name="bill_to" class="form-control" value="{{ $bill_to }}">
-                        <button type="submit" class="btn btn-primary">Filter</button>
-                        @if (request()->has('bill_from') || request()->has('bill_to'))
-                            <a href="{{ route('vendors.view', ['uuid' => $vendor->uuid, 'trans_from' => $trans_from, 'trans_to' => $trans_to]) }}"
-                                class="btn btn-secondary">Clear</a>
-                        @endif
-                    </form>
-
-                    <a href="{{ route('vendors.bills.general_create_2') }}" class="btn btn-primary">
-                        <i class="bx bx-plus"></i> Add Bill
-                    </a>
-                </div>
-            </div>
-            <div class="table-responsive text-nowrap">
-                <table class="table" style="min-height: 200px;">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Total Amount</th>
-                            <th>Status</th>
-                            <th>View</th>
-                            <th>Download</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="table-border-bottom-0">
-                        @foreach ($vendorBills as $bill)
-                            <tr>
-                                <td>
-                                    {{ $bill->date ? \Carbon\Carbon::parse($bill->date)->format('d-m-Y') : '-' }}
-                                </td>
-                                <td>PKR {{ number_format($bill->total_amount, 0) }}</td>
-                                <td>
-                                    @if($bill->approval_status == 'pending')
-                                        <span class="badge badge-pending">Pending</span>
-                                    @elseif($bill->approval_status == 'approved')
-                                        <span class="badge badge-approved">Approved</span>
-                                    @endif
-                                </td>
-                                <td>
-                                    @php $firstProduct = $bill->billProducts->first(); @endphp
-                                    @if ($firstProduct && $firstProduct->type === 'product')
-                                        <a href="{{ route('vendors.bills.general_show_2', $bill->uuid) }}">
-                                            <i class='bx bx-md bx-show'></i>
-                                        </a>
-                                    @else
-                                        <a href="{{ route('vendors.bills.show', $bill->uuid) }}">
-                                            <i class='bx bx-md bx-show'></i>
-                                        </a>
-                                    @endif
-                                </td>
-                                <td>
-                                    @php
-                                        $firstProduct = $bill->billProducts->first();
-                                    @endphp
-                                    @if ($firstProduct && $firstProduct->type === 'product')
-                                        <a href="{{ route('vendors.bills.general_pdf_2', $bill->uuid) }}">
-                                            <i class='bx bx-md bx-download'></i>
-                                        </a>
-                                    @else
-                                        <a href="{{ route('vendors.bills.download', $bill->uuid) }}">
-                                            <i class='bx bx-md bx-download'></i>
-                                        </a>
-                                    @endif
-                                </td>
-                                <td class="text-center">
-                                    @php
-                                        $firstProduct = $bill->billProducts->first();
-                                    @endphp
-                                    @if ($firstProduct && $firstProduct->type === 'product')
-                                        <a href="{{ route('vendors.bills.general_edit_2', $bill->uuid) }}" class="">
-                                            <i class='bx bx-md bx-edit'></i>
-                                        </a>
-                                    @else
-                                        <a href="{{ route('vendors.bills.edit', $bill->uuid) }}" class="">
-                                            <i class='bx bx-md bx-edit'></i>
-                                        </a>
-                                    @endif
-
-                                    <a href="javascript:void(0);" class="dropdown-item action-confirm "
-                                        data-url="{{ route('vendors.bills.delete', $bill->uuid) }}"
-                                        data-text="You want to delete this bill!" data-button-text="Yes, Delete it!">
-                                        <i class='bx bx-md bx-trash'></i>
-                                    </a>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
         <!-- Vendor Bank Statement Section -->
         <div class="card mt-5">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Vendors Bank Statement</h5>
                 <div class="d-flex gap-2 align-items-center">
                     <form method="GET" action="{{ route('vendors.view', $vendor->uuid) }}" class="d-flex gap-2">
-                        <input type="hidden" name="bill_from" value="{{ $bill_from }}">
-                        <input type="hidden" name="bill_to" value="{{ $bill_to }}">
                         <input type="date" name="trans_from" class="form-control" value="{{ $trans_from }}">
                         <input type="date" name="trans_to" class="form-control" value="{{ $trans_to }}">
                         <button type="submit" class="btn btn-sm btn-primary">Filter</button>
                         @if (request()->has('trans_from') || request()->has('trans_to'))
-                            <a href="{{ route('vendors.view', ['uuid' => $vendor->uuid, 'bill_from' => $bill_from, 'bill_to' => $bill_to]) }}"
+                            <a href="{{ route('vendors.view', ['uuid' => $vendor->uuid]) }}"
                                 class="btn btn-sm btn-secondary">Clear</a>
                         @endif
                     </form>
@@ -235,8 +132,6 @@
                         class="btn btn-info ms-2" target="_blank">
                         <i class='bx bx-download'></i> Report
                     </a>
-                    <a href="{{ route('vendors.send-payment', $vendor->uuid) }}" class="btn btn-success ms-2">Send
-                        Payment</a>
                 </div>
             </div>
             <div class="table-responsive text-nowrap">
@@ -255,6 +150,12 @@
                         @forelse ($vendorTransactions as $transaction)
                             @php
                                 $type = strtolower($transaction->type ?? '');
+                                
+                                // Skip bill type transactions - Don't display purchase bills in bank statement
+                                if ($type == 'bill') {
+                                    continue;
+                                }
+                                
                                 $transactionType = $transaction->transaction_type ?? '';
                                 $amount = floatval($transaction->amount ?? 0);
                                 $description = $transaction->description ?? '';
@@ -296,17 +197,7 @@
                                 }
                                 
                                 // DR/CR LOGIC FOR VENDOR
-                                if ($type == 'bill') {
-                                    $displayType = 'Purchase Bill';
-                                    $badgeClass = 'badge-bill';
-                                    $badgeText = 'BILL';
-                                    $amountClass = 'text-cr';
-                                    $transactionTypeDisplay = 'CR';
-                                    $descriptionText = $description ?: 'Purchase from vendor';
-                                    if (isset($transaction->bill) && $transaction->bill) {
-                                        $descriptionText = 'Bill #' . $transaction->bill->id;
-                                    }
-                                } elseif ($type == 'payment') {
+                                if ($type == 'payment') {
                                     $displayType = 'Payment Sent';
                                     $badgeClass = 'badge-payment';
                                     $badgeText = 'PAYMENT';
@@ -409,12 +300,7 @@
                                     @endif
                                 </td>
                                 <td class="text-center">
-                                    @if ($type == 'bill' && isset($transaction->bill) && $transaction->bill)
-                                        <a href="{{ route('vendors.bills.general_show_2', $transaction->bill->uuid) }}"
-                                            class="btn btn-sm btn-outline-primary" title="View Bill">
-                                            <i class='bx bx-show'></i>
-                                        </a>
-                                    @elseif ($type == 'payment')
+                                    @if ($type == 'payment')
                                         <a href="{{ route('vendors.payment-details', $transaction->uuid) }}"
                                             class="btn btn-sm btn-outline-info" title="View Payment Details">
                                             <i class='bx bx-show'></i>
