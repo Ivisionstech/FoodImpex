@@ -232,6 +232,10 @@ Route::prefix('general-transactions')->name('general-transactions.')->group(func
     Route::delete('/delete/{id}', [GeneralTransactionController::class, 'deleteEntry'])->name('delete');
     Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
     
+    // Edit/Update routes (parameters)
+    Route::get('/{id}/edit', [GeneralTransactionController::class, 'edit'])->name('edit');
+    Route::put('/{id}', [GeneralTransactionController::class, 'update'])->name('update');
+    
     // Transfer routes (static)
     Route::get('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorForm'])->name('customer-to-vendor');
     Route::post('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorTransfer'])->name('customer-to-vendor.store');
@@ -246,21 +250,6 @@ Route::prefix('general-transactions')->name('general-transactions.')->group(func
     Route::get('/{id}', [GeneralTransactionController::class, 'getEntry'])->name('get-entry');
 });
 
-Route::get('/test-daybook-save', function() {
-    try {
-        $test = \App\Models\Daybook::create([
-            'transaction_date' => now(),
-            'amount' => 100,
-            'status' => 1,
-            'type' => 'transaction',
-            'approval_status' => 'approved',
-            'description' => 'Test entry',
-        ]);
-        return 'SUCCESS! Daybook entry created with ID: ' . $test->id;
-    } catch (\Exception $e) {
-        return 'ERROR: ' . $e->getMessage();
-    }
-});
     // ==================== ACCESS CONTROL ROUTES ====================
     Route::prefix('access-control')->name('access-control.')->group(function () {
         Route::resource('roles', RoleController::class);

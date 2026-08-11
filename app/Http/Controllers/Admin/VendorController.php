@@ -12,6 +12,10 @@ use Illuminate\Support\Str;
 use App\Models\VendorTransaction;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\File;
 
 class VendorController extends Controller
 {

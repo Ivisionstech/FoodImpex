@@ -28,42 +28,112 @@
             </div>
         @endif
 
-        <!-- STATS CARDS - COMMENTED OUT 
+        <!-- STATISTICS CARDS -->
         @php
-            $isAdmin = auth()->user()->role == 'admin';
+            $totalEntries = $entries->total();
             $pendingCount = $entries->where('approval_status', 'pending')->count();
             $approvedCount = $entries->where('approval_status', 'approved')->count();
-            $dueCount = $entries->filter(function($e) { 
-                return strpos($e->description ?? '', 'DUE:') !== false && $e->approval_status == 'pending';
-            })->count();
-            $creditCount = $entries->whereNotNull('credit_id')->count();
-            $debitCount = $entries->whereNotNull('debit_id')->count();
+            $totalAmount = $entries->sum('amount');
         @endphp
 
         <div class="row g-4 mb-4">
-            <div class="col-xl-2 col-md-4 col-sm-6">
-                <div class="card bg-gradient-primary text-white border-0 shadow-sm">
-                    <div class="card-body py-3">
+            <div class="col-xl-3 col-md-6">
+                <div class="card border-0 shadow-sm hover-shadow transition-all">
+                    <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="text-white-50 mb-1">Total Amount</h6>
-                                <h3 class="text-white mb-0">PKR {{ number_format($entries->sum('amount'), 2) }}</h3>
+                                <span class="badge bg-primary bg-opacity-10 text-primary p-2 rounded-3">
+                                    <i class="bx bx-receipt fs-4"></i>
+                                </span>
                             </div>
-                            <div class="rounded-circle bg-white bg-opacity-25 p-3">
-                                <i class="bx bx-money fs-2"></i>
+                            <div class="text-end">
+                                <h6 class="text-muted mb-1">Total Entries</h6>
+                                <h3 class="mb-0 fw-bold">{{ $totalEntries }}</h3>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-primary" role="progressbar" style="width: 100%"></div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            ... (other stats cards) ...
+
+            <div class="col-xl-3 col-md-6">
+                <div class="card border-0 shadow-sm hover-shadow transition-all">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-warning bg-opacity-10 text-warning p-2 rounded-3">
+                                    <i class="bx bx-time fs-4"></i>
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                <h6 class="text-muted mb-1">Pending Entries</h6>
+                                <h3 class="mb-0 fw-bold text-warning">{{ $pendingCount }}</h3>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-warning" role="progressbar" style="width: {{ $totalEntries > 0 ? ($pendingCount/$totalEntries)*100 : 0 }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6">
+                <div class="card border-0 shadow-sm hover-shadow transition-all">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-success bg-opacity-10 text-success p-2 rounded-3">
+                                    <i class="bx bx-check-circle fs-4"></i>
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                <h6 class="text-muted mb-1">Approved Entries</h6>
+                                <h3 class="mb-0 fw-bold text-success">{{ $approvedCount }}</h3>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ $totalEntries > 0 ? ($approvedCount/$totalEntries)*100 : 0 }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6">
+                <div class="card border-0 shadow-sm hover-shadow transition-all">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-info bg-opacity-10 text-info p-2 rounded-3">
+                                    <i class="bx bx-money fs-4"></i>
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                <h6 class="text-muted mb-1">Total Amount</h6>
+                                <h3 class="mb-0 fw-bold text-info">PKR {{ number_format($totalAmount, 0) }}</h3>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: 100%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        -->
 
         <!-- Filter Section -->
         <div class="card mb-4 border-0 shadow-sm">
             <div class="card-body">
-                <form action="{{ route(Route::currentRouteName()) }}" method="GET" id="filterForm">
+                <form action="{{ route('general-transactions.index') }}" method="GET" id="filterForm">
                     <div class="row g-3">
                         <div class="col-md-3">
                             <label class="form-label text-muted small fw-semibold">FROM DATE</label>
@@ -97,7 +167,7 @@
                                 <i class="bx bx-filter-alt me-1"></i> Apply Filters
                             </button>
                             @if (request()->has('from_date') || request()->has('to_date') || request()->has('approval_status') || request()->has('amount_type'))
-                                <a href="{{ route(Route::currentRouteName()) }}" class="btn btn-outline-secondary px-4">
+                                <a href="{{ route('general-transactions.index') }}" class="btn btn-outline-secondary px-4">
                                     <i class="bx bx-refresh me-1"></i> Reset
                                 </a>
                             @endif
@@ -121,209 +191,233 @@
                 </div>
             </div>
 
-            <div class="card-body">
-                @forelse ($entries as $index => $entry)
-                    @php
-                        $isDebit = $entry->debit_type && $entry->debit_id;
-                        $isCredit = $entry->credit_type && $entry->credit_id;
-                        $amount = $entry->amount ?? 0;
-                        $isDue = strpos($entry->description ?? '', 'DUE:') !== false;
-                        $isClearedDue = strpos($entry->description ?? '', 'CLEARED:') !== false;
-                        
-                        // Determine status badges
-                        $approvalBadge = '';
-                        $approvalClass = '';
-                        if ($entry->approval_status == 'approved') {
-                            $approvalBadge = 'Approved';
-                            $approvalClass = 'success';
-                        } else {
-                            $approvalBadge = 'Pending';
-                            $approvalClass = 'warning';
-                        }
-                        
-                        // Determine amount type badge
-                        $amountBadge = '';
-                        $amountClass = '';
-                        $amountIcon = '';
-                        if ($isDue && $entry->approval_status == 'pending') {
-                            $amountBadge = 'Due';
-                            $amountClass = 'danger';
-                            $amountIcon = 'bx-error-circle';
-                        } elseif ($isClearedDue) {
-                            $amountBadge = 'Cleared';
-                            $amountClass = 'info';
-                            $amountIcon = 'bx-check-circle';
-                        } elseif ($isDebit) {
-                            $amountBadge = 'Debit';
-                            $amountClass = 'danger';
-                            $amountIcon = 'bx-arrow-down';
-                        } elseif ($isCredit) {
-                            $amountBadge = 'Credit';
-                            $amountClass = 'success';
-                            $amountIcon = 'bx-arrow-up';
-                        } else {
-                            $amountBadge = 'Pending';
-                            $amountClass = 'secondary';
-                            $amountIcon = 'bx-time';
-                        }
-                        
-                        // Determine account name
-                        $accountName = '';
-                        $accountType = '';
-                        if ($isDebit) {
-                            $accountType = $entry->debit_type;
-                            if ($accountType == 'customer') {
-                                $customer = \App\Models\Customer::find($entry->debit_id);
-                                $accountName = $customer ? $customer->name : 'Customer #' . $entry->debit_id;
-                            } elseif ($accountType == 'vendor') {
-                                $vendor = \App\Models\Vendor::find($entry->debit_id);
-                                $accountName = $vendor ? $vendor->company_name : 'Vendor #' . $entry->debit_id;
-                            } elseif ($accountType == 'bank') {
-                                $bank = \App\Models\Bank::find($entry->debit_id);
-                                $accountName = $bank ? $bank->name : 'Bank #' . $entry->debit_id;
-                            } elseif ($accountType == 'cash') {
-                                $accountName = 'Cash Account';
-                            }
-                        } elseif ($isCredit) {
-                            $accountType = $entry->credit_type;
-                            if ($accountType == 'customer') {
-                                $customer = \App\Models\Customer::find($entry->credit_id);
-                                $accountName = $customer ? $customer->name : 'Customer #' . $entry->credit_id;
-                            } elseif ($accountType == 'vendor') {
-                                $vendor = \App\Models\Vendor::find($entry->credit_id);
-                                $accountName = $vendor ? $vendor->company_name : 'Vendor #' . $entry->credit_id;
-                            } elseif ($accountType == 'bank') {
-                                $bank = \App\Models\Bank::find($entry->credit_id);
-                                $accountName = $bank ? $bank->name : 'Bank #' . $entry->credit_id;
-                            } elseif ($accountType == 'cash') {
-                                $accountName = 'Cash Account';
-                            }
-                        }
-                        
-                        $rowClass = $isDue && $entry->approval_status == 'pending' ? 'border-start border-danger border-3' : '';
-                    @endphp
-                    
-                    <div class="entry-card mb-3 p-3 rounded-3 bg-white shadow-sm border {{ $rowClass }}" id="entry-row-{{ $entry->id }}">
-                        <div class="row g-3 align-items-center">
-                            <!-- Serial Number -->
-                            <div class="col-md-1">
-                                <div class="text-muted small fw-semibold">#{{ $entries->firstItem() + $index }}</div>
-                            </div>
-                            
-                            <!-- Date & Time -->
-                            <div class="col-md-2">
-                                <div class="fw-semibold">{{ \Carbon\Carbon::parse($entry->transaction_date)->format('d-M-Y') }}</div>
-                                <div class="small text-muted">{{ \Carbon\Carbon::parse($entry->transaction_date)->format('h:i A') }}</div>
-                            </div>
-                            
-                            <!-- Description -->
-                            <div class="col-md-3">
-                                <div class="fw-semibold text-truncate" style="max-width: 250px;" title="{{ $entry->description }}">
-                                    {{ \Str::limit($entry->description ?? 'N/A', 40) }}
-                                </div>
-                                @if($isDue)
-                                    <div class="small text-danger mt-1">
-                                        <i class="bx bx-info-circle me-1"></i> Due Amount - Needs Payment
-                                    </div>
-                                @endif
-                                @if($isClearedDue)
-                                    <div class="small text-info mt-1">
-                                        <i class="bx bx-check-circle me-1"></i> Due Cleared
-                                    </div>
-                                @endif
-                            </div>
-                            
-                            <!-- Account -->
-                            <div class="col-md-2">
-                                <div class="d-flex align-items-center gap-2">
-                                    <i class="bx bx-{{ $accountType == 'customer' ? 'user' : ($accountType == 'vendor' ? 'store' : ($accountType == 'bank' ? 'bank' : 'wallet')) }} fs-5 text-primary"></i>
-                                    <div>
-                                        <div class="fw-semibold small">{{ ucfirst($accountType) }}</div>
-                                        <div class="small text-muted">{{ $accountName }}</div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Approval Status Badge - CLICKABLE -->
-                            <div class="col-md-1">
-                                @if($entry->approval_status == 'pending' && $isAdmin && !$isClearedDue)
-                                    <button type="button" 
-                                        class="badge bg-{{ $approvalClass }} bg-opacity-10 text-{{ $approvalClass }} px-3 py-2 rounded-pill border-0 approve-entry-btn"
-                                        data-entry-id="{{ $entry->id }}"
-                                        data-entry-amount="{{ $entry->amount }}"
-                                        style="cursor: pointer; transition: all 0.2s;">
-                                        <i class="bx bx-{{ $entry->approval_status == 'approved' ? 'check-circle' : 'time' }} me-1"></i>
-                                        {{ $approvalBadge }}
-                                    </button>
-                                @else
-                                    <span class="badge bg-{{ $approvalClass }} bg-opacity-10 text-{{ $approvalClass }} px-3 py-2 rounded-pill">
-                                        <i class="bx bx-{{ $entry->approval_status == 'approved' ? 'check-circle' : 'time' }} me-1"></i>
-                                        {{ $approvalBadge }}
-                                    </span>
-                                @endif
-                            </div>
-                            
-                            <!-- Amount Type Badge -->
-                            <div class="col-md-1">
-                                <span class="badge bg-{{ $amountClass }} bg-opacity-10 text-{{ $amountClass }} px-3 py-2 rounded-pill">
-                                    <i class="bx {{ $amountIcon }} me-1"></i>
-                                    {{ $amountBadge }}
-                                </span>
-                            </div>
-                            
-                            <!-- Amount -->
-                            <div class="col-md-1">
-                                <div class="fw-bold {{ $isDue && $entry->approval_status == 'pending' ? 'text-danger' : ($isDebit ? 'text-danger' : ($isCredit ? 'text-success' : 'text-dark')) }}">
-                                    PKR {{ number_format($amount, 2) }}
-                                </div>
-                                @if($isDue && $entry->approval_status == 'pending')
-                                    <div class="small text-muted">Pending Payment</div>
-                                @endif
-                            </div>
-                            
-                            <!-- Actions -->
-                            <div class="col-md-1 text-end" style="position: relative;">
-                                <div class="dropdown">
-                                    <button type="button" class="btn btn-sm btn-icon rounded-circle text-muted" data-bs-toggle="dropdown" style="position: relative; z-index: 5;">
-                                        <i class="bx bx-dots-vertical-rounded fs-5"></i>
-                                    </button>
-                                    <div class="dropdown-menu dropdown-menu-end shadow-sm border-0" style="z-index: 1050;">
-                                        <a class="dropdown-item py-2" href="#" onclick="viewEntry({{ $entry->id }})">
-                                            <i class="bx bx-show-alt me-2 text-info"></i> View Details
-                                        </a>
-                                        @if($isAdmin && $entry->approval_status == 'pending' && !$isClearedDue)
-                                            <div class="dropdown-divider"></div>
-                                            <button type="button" class="dropdown-item py-2 text-success approve-entry-btn" 
-                                                    data-entry-id="{{ $entry->id }}" 
-                                                    data-entry-amount="{{ $entry->amount }}">
-                                                <i class="bx bx-check-circle me-2"></i> Approve Entry
-                                            </button>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="5%">#</th>
+                                <th width="12%">Date</th>
+                                <th width="25%">Description</th>
+                                <th width="18%">Account</th>
+                                <th width="12%">Approval</th>
+                                <th width="10%">Type</th>
+                                <th width="10%">Amount</th>
+                                <th width="8%" class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($entries as $index => $entry)
+                                @php
+                                    $isDebit = $entry->debit_type && $entry->debit_id;
+                                    $isCredit = $entry->credit_type && $entry->credit_id;
+                                    $amount = $entry->amount ?? 0;
+                                    $isDue = strpos($entry->description ?? '', 'DUE:') !== false;
+                                    $isClearedDue = strpos($entry->description ?? '', 'CLEARED:') !== false;
+                                    $isAdmin = auth()->user()->role == 'admin';
+                                    
+                                    // Determine status badges
+                                    $approvalBadge = '';
+                                    $approvalClass = '';
+                                    if ($entry->approval_status == 'approved') {
+                                        $approvalBadge = 'Approved';
+                                        $approvalClass = 'success';
+                                    } else {
+                                        $approvalBadge = 'Pending';
+                                        $approvalClass = 'warning';
+                                    }
+                                    
+                                    // Determine amount type badge
+                                    $amountBadge = '';
+                                    $amountClass = '';
+                                    $amountIcon = '';
+                                    if ($isDue && $entry->approval_status == 'pending') {
+                                        $amountBadge = 'Due';
+                                        $amountClass = 'danger';
+                                        $amountIcon = 'bx-error-circle';
+                                    } elseif ($isClearedDue) {
+                                        $amountBadge = 'Cleared';
+                                        $amountClass = 'info';
+                                        $amountIcon = 'bx-check-circle';
+                                    } elseif ($isDebit) {
+                                        $amountBadge = 'Debit';
+                                        $amountClass = 'danger';
+                                        $amountIcon = 'bx-arrow-down';
+                                    } elseif ($isCredit) {
+                                        $amountBadge = 'Credit';
+                                        $amountClass = 'success';
+                                        $amountIcon = 'bx-arrow-up';
+                                    } else {
+                                        $amountBadge = 'Pending';
+                                        $amountClass = 'secondary';
+                                        $amountIcon = 'bx-time';
+                                    }
+                                    
+                                    // Determine account name
+                                    $accountName = '';
+                                    $accountType = '';
+                                    $accountIcon = '';
+                                    if ($isDebit) {
+                                        $accountType = $entry->debit_type;
+                                        if ($accountType == 'customer') {
+                                            $customer = \App\Models\Customer::find($entry->debit_id);
+                                            $accountName = $customer ? $customer->name : 'Customer #' . $entry->debit_id;
+                                            $accountIcon = 'bx-user';
+                                        } elseif ($accountType == 'vendor') {
+                                            $vendor = \App\Models\Vendor::find($entry->debit_id);
+                                            $accountName = $vendor ? $vendor->company_name : 'Vendor #' . $entry->debit_id;
+                                            $accountIcon = 'bx-store';
+                                        } elseif ($accountType == 'bank') {
+                                            $bank = \App\Models\Bank::find($entry->debit_id);
+                                            $accountName = $bank ? $bank->name : 'Bank #' . $entry->debit_id;
+                                            $accountIcon = 'bx-bank';
+                                        } elseif ($accountType == 'cash') {
+                                            $accountName = 'Cash Account';
+                                            $accountIcon = 'bx-wallet';
+                                        }
+                                    } elseif ($isCredit) {
+                                        $accountType = $entry->credit_type;
+                                        if ($accountType == 'customer') {
+                                            $customer = \App\Models\Customer::find($entry->credit_id);
+                                            $accountName = $customer ? $customer->name : 'Customer #' . $entry->credit_id;
+                                            $accountIcon = 'bx-user';
+                                        } elseif ($accountType == 'vendor') {
+                                            $vendor = \App\Models\Vendor::find($entry->credit_id);
+                                            $accountName = $vendor ? $vendor->company_name : 'Vendor #' . $entry->credit_id;
+                                            $accountIcon = 'bx-store';
+                                        } elseif ($accountType == 'bank') {
+                                            $bank = \App\Models\Bank::find($entry->credit_id);
+                                            $accountName = $bank ? $bank->name : 'Bank #' . $entry->credit_id;
+                                            $accountIcon = 'bx-bank';
+                                        } elseif ($accountType == 'cash') {
+                                            $accountName = 'Cash Account';
+                                            $accountIcon = 'bx-wallet';
+                                        }
+                                    }
+                                    
+                                    $rowClass = $isDue && $entry->approval_status == 'pending' ? 'table-danger' : '';
+                                @endphp
+                                <tr class="{{ $rowClass }}">
+                                    <td>
+                                        <span class="fw-semibold text-muted">{{ $entries->firstItem() + $index }}</span>
+                                    </td>
+                                    <td>
+                                        <div class="fw-semibold">{{ \Carbon\Carbon::parse($entry->transaction_date)->format('d-M-Y') }}</div>
+                                        <div class="small text-muted">{{ \Carbon\Carbon::parse($entry->transaction_date)->format('h:i A') }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-semibold" title="{{ $entry->description }}">
+                                            {{ \Str::limit($entry->description ?? 'N/A', 35) }}
+                                        </div>
+                                        @if($isDue && $entry->approval_status == 'pending')
+                                            <span class="badge bg-danger bg-opacity-10 text-danger mt-1">
+                                                <i class="bx bx-info-circle me-1"></i> Due - Needs Payment
+                                            </span>
                                         @endif
-                                        @if($isAdmin && ($entry->approval_status == 'pending' || $isDue))
-                                            <div class="dropdown-divider"></div>
-                                            <button type="button" class="dropdown-item py-2 text-danger delete-entry-btn" 
-                                                    data-entry-id="{{ $entry->id }}">
-                                                <i class="bx bx-trash me-2"></i> Delete Entry
-                                            </button>
+                                        @if($isClearedDue)
+                                            <span class="badge bg-info bg-opacity-10 text-info mt-1">
+                                                <i class="bx bx-check-circle me-1"></i> Due Cleared
+                                            </span>
                                         @endif
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                @empty
-                    <div class="text-center py-5">
-                        <div class="mb-3">
-                            <i class="bx bx-receipt fs-1 text-muted"></i>
-                        </div>
-                        <h6 class="text-muted">No entries found</h6>
-                        <p class="text-muted small mb-0">Try adjusting your filters or create a new entry.</p>
-                    </div>
-                @endforelse
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <i class="bx {{ $accountIcon }} fs-5 text-primary"></i>
+                                            <div>
+                                                <div class="fw-semibold small text-capitalize">{{ $accountType }}</div>
+                                                <div class="small text-muted">{{ \Str::limit($accountName, 20) }}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ $approvalClass }} bg-opacity-10 text-{{ $approvalClass }} px-3 py-2 rounded-pill">
+                                            <i class="bx bx-{{ $entry->approval_status == 'approved' ? 'check-circle' : 'time' }} me-1"></i>
+                                            {{ $approvalBadge }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ $amountClass }} bg-opacity-10 text-{{ $amountClass }} px-3 py-2 rounded-pill">
+                                            <i class="bx {{ $amountIcon }} me-1"></i>
+                                            {{ $amountBadge }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="fw-bold {{ $isDue && $entry->approval_status == 'pending' ? 'text-danger' : ($isDebit ? 'text-danger' : ($isCredit ? 'text-success' : 'text-dark')) }}">
+                                            PKR {{ number_format($amount, 0) }}
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="dropdown">
+                                            <button type="button" class="btn btn-sm btn-icon rounded-circle text-muted" data-bs-toggle="dropdown" aria-expanded="false" style="position: relative; z-index: 2;">
+                                                <i class="bx bx-dots-vertical-rounded fs-5"></i>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 py-2" style="z-index: 1060; min-width: 200px; border-radius: 12px;">
+                                                <!-- View Option - Navigates to view page -->
+                                                <li>
+                                                    <a class="dropdown-item py-2 px-3" href="{{ route('general-transactions.get-entry', $entry->id) }}">
+                                                        <i class="bx bx-show-alt me-2 text-info" style="font-size: 18px;"></i>
+                                                        <span>View Details</span>
+                                                    </a>
+                                                </li>
+                                                
+                                                <!-- Edit Option - Always Visible for all entries -->
+                                                <li>
+                                                    <a class="dropdown-item py-2 px-3" href="{{ route('general-transactions.edit', $entry->id) }}">
+                                                        <i class="bx bx-edit-alt me-2 text-warning" style="font-size: 18px;"></i>
+                                                        <span>Edit Entry</span>
+                                                    </a>
+                                                </li>
+                                                
+                                                <!-- Approve Option - Admin only for pending entries -->
+                                                @if($isAdmin && $entry->approval_status == 'pending' && !$isClearedDue)
+                                                    <li>
+                                                        <hr class="dropdown-divider">
+                                                    </li>
+                                                    <li>
+                                                        <button type="button" class="dropdown-item py-2 px-3 approve-entry-btn" 
+                                                                data-entry-id="{{ $entry->id }}" 
+                                                                data-entry-amount="{{ $entry->amount }}">
+                                                            <i class="bx bx-check-circle me-2 text-success" style="font-size: 18px;"></i>
+                                                            <span>Approve Entry</span>
+                                                        </button>
+                                                    </li>
+                                                @endif
+                                                
+                                                <!-- Delete Option - Admin only for pending entries -->
+                                                @if($isAdmin && $entry->approval_status == 'pending')
+                                                    <li>
+                                                        <hr class="dropdown-divider">
+                                                    </li>
+                                                    <li>
+                                                        <button type="button" class="dropdown-item py-2 px-3 delete-entry-btn" 
+                                                                data-entry-id="{{ $entry->id }}">
+                                                            <i class="bx bx-trash me-2 text-danger" style="font-size: 18px;"></i>
+                                                            <span class="text-danger">Delete Entry</span>
+                                                        </button>
+                                                    </li>
+                                                @endif
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="8" class="text-center py-5">
+                                        <div class="mb-3">
+                                            <i class="bx bx-receipt fs-1 text-muted"></i>
+                                        </div>
+                                        <h6 class="text-muted">No entries found</h6>
+                                        <p class="text-muted small mb-0">Try adjusting your filters or create a new entry.</p>
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
 
                 <!-- Pagination -->
                 @if($entries->total() > 0)
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mt-4 pt-2">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 p-3 border-top">
                         <div class="d-flex align-items-center gap-3">
                             <div class="text-muted small">
                                 Showing {{ $entries->firstItem() }} to {{ $entries->lastItem() }} of {{ $entries->total() }} entries
@@ -346,29 +440,6 @@
             </div>
         </div>
     </div>
-
-    <!-- View Modal -->
-    <div class="modal fade" id="viewModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content rounded-4">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title">
-                        <i class="bx bx-info-circle me-2 text-primary"></i>
-                        Entry Details
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body" id="modalContent">
-                    <div class="text-center py-4">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <p class="mt-2 text-muted">Loading entry details...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
 @push('scripts')
@@ -376,40 +447,65 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
 <style>
-    /* Gradient Backgrounds for Stats Cards - Commented Out 
-    .bg-gradient-primary { background: linear-gradient(135deg, #696cff 0%, #5a5cbf 100%); }
-    .bg-gradient-info { background: linear-gradient(135deg, #03c3ec 0%, #0299b8 100%); }
-    .bg-gradient-warning { background: linear-gradient(135deg, #ffab00 0%, #cc8800 100%); }
-    .bg-gradient-success { background: linear-gradient(135deg, #71dd37 0%, #5ab020 100%); }
-    .bg-gradient-danger { background: linear-gradient(135deg, #ff3e1d 0%, #cc3117 100%); }
-    .bg-gradient-secondary { background: linear-gradient(135deg, #8592a3 0%, #6a7582 100%); }
-    */
-    
-    .entry-card {
-        transition: all 0.2s ease-in-out;
-        border: 1px solid #e9ecef;
+    /* Statistics Cards */
+    .hover-shadow {
+        transition: all 0.3s ease;
     }
     
-    .entry-card:hover {
-        transform: translateX(5px);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08) !important;
-        border-color: #696cff !important;
+    .hover-shadow:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1) !important;
     }
     
+    .transition-all {
+        transition: all 0.3s ease;
+    }
+    
+    .card .badge.bg-primary.bg-opacity-10 { background-color: rgba(105, 108, 255, 0.1) !important; color: #696cff !important; }
+    .card .badge.bg-warning.bg-opacity-10 { background-color: rgba(255, 193, 7, 0.1) !important; color: #ffc107 !important; }
+    .card .badge.bg-success.bg-opacity-10 { background-color: rgba(40, 167, 69, 0.1) !important; color: #28a745 !important; }
+    .card .badge.bg-info.bg-opacity-10 { background-color: rgba(23, 162, 184, 0.1) !important; color: #17a2b8 !important; }
+    
+    .progress {
+        border-radius: 10px;
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+    
+    .progress-bar {
+        border-radius: 10px;
+        transition: width 1s ease-in-out;
+    }
+    
+    /* Table Styling */
+    .table > :not(caption) > * > * {
+        padding: 12px 10px;
+        vertical-align: middle;
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(105, 108, 255, 0.04);
+        transition: all 0.2s ease;
+    }
+    
+    .table tr.table-danger {
+        border-left: 3px solid #dc3545;
+    }
+    
+    /* Badge Styles */
     .badge.bg-success.bg-opacity-10 { background-color: rgba(40, 167, 69, 0.1) !important; color: #28a745 !important; }
     .badge.bg-warning.bg-opacity-10 { background-color: rgba(255, 193, 7, 0.1) !important; color: #ffc107 !important; }
     .badge.bg-danger.bg-opacity-10 { background-color: rgba(220, 53, 69, 0.1) !important; color: #dc3545 !important; }
     .badge.bg-secondary.bg-opacity-10 { background-color: rgba(108, 117, 125, 0.1) !important; color: #6c757d !important; }
     .badge.bg-info.bg-opacity-10 { background-color: rgba(23, 162, 184, 0.1) !important; color: #17a2b8 !important; }
     
+    /* Dropdown Styling */
     .dropdown-menu {
         border-radius: 12px;
         animation: fadeInDown 0.2s ease;
-        z-index: 1060 !important;
+        min-width: 200px;
+        padding: 8px 0;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12) !important;
     }
-    
-    .dropdown { position: relative; z-index: 1; }
-    .dropdown.show { z-index: 1060; }
     
     @keyframes fadeInDown {
         from { opacity: 0; transform: translateY(-10px); }
@@ -420,11 +516,28 @@
         transition: all 0.2s ease;
         border-radius: 8px;
         margin: 2px 8px;
-        width: calc(100% - 16px);
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
     }
     
-    .dropdown-item:hover { transform: translateX(5px); }
+    .dropdown-item:hover {
+        transform: translateX(5px);
+        background-color: rgba(105, 108, 255, 0.06);
+    }
     
+    .dropdown-item i {
+        width: 20px;
+        text-align: center;
+    }
+    
+    .dropdown-divider {
+        margin: 6px 12px;
+    }
+    
+    /* Pagination */
     .pagination { gap: 5px; margin-bottom: 0; }
     .pagination .page-item .page-link {
         border-radius: 8px !important;
@@ -450,21 +563,50 @@
         border-color: #e9ecef;
     }
     
-    .text-truncate {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+    /* Action Button */
+    .btn-icon {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: all 0.2s ease;
     }
     
-    .badge.approve-entry-btn:hover {
-        transform: scale(1.05);
-        cursor: pointer;
+    .btn-icon:hover {
+        background-color: rgba(105, 108, 255, 0.1);
+        transform: scale(1.1);
+    }
+    
+    .dropdown {
+        position: relative;
+    }
+    
+    /* Responsive */
+    @media (max-width: 992px) {
+        .table-responsive {
+            overflow-x: auto;
+        }
+        .table {
+            min-width: 768px;
+        }
     }
 </style>
 
 <script>
 $(document).ready(function() {
     var isAdmin = '{{ auth()->user()->role }}' == 'admin';
+    
+    // Animate progress bars on load
+    $('.progress-bar').each(function() {
+        var width = $(this).css('width');
+        $(this).css('width', '0%');
+        setTimeout(() => {
+            $(this).css('width', width);
+        }, 300);
+    });
     
     $('#perPageSelect').on('change', function() {
         var perPage = $(this).val();
@@ -499,7 +641,7 @@ $(document).ready(function() {
                         success: function(response) { 
                             Swal.fire({ 
                                 title: 'Success!', 
-                                text: response.message, 
+                                text: response.message || 'Entry approved successfully!', 
                                 icon: 'success', 
                                 timer: 2000, 
                                 showConfirmButton: false 
@@ -559,29 +701,5 @@ $(document).ready(function() {
         });
     }
 });
-
-function viewEntry(id) {
-    $('#viewModal').modal('show');
-    $('#modalContent').html('<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading entry details...</p></div>');
-    
-    $.ajax({
-        url: '/general-transactions/' + id,
-        type: 'GET',
-        success: function(response) {
-            $('#modalContent').html(response);
-        },
-        error: function() {
-            $('#modalContent').html(`
-                <div class="p-3">
-                    <div class="alert alert-info">
-                        <i class="bx bx-info-circle me-2"></i>
-                        <strong>Entry ID:</strong> ${id}<br>
-                        <strong>Status:</strong> View details feature will be available soon.
-                    </div>
-                </div>
-            `);
-        }
-    });
-}
 </script>
 @endpush
