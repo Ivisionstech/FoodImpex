@@ -493,7 +493,8 @@ public function downloadBankStatement(Request $request, $uuid)
             ];
         }
 
-        return view('admin.pages.vendors.bank-statement-pdf', compact(
+        // Generate PDF using DomPDF or view
+        $pdf = \PDF::loadView('admin.pages.vendors.bank-statement-pdf', compact(
             'vendor', 
             'vendorTransactions',
             'companySettings',
@@ -503,11 +504,18 @@ public function downloadBankStatement(Request $request, $uuid)
             'trans_to'
         ));
         
+        // Set paper size and orientation
+        $pdf->setPaper('A4', 'portrait');
+        
+        // Return PDF download with filename
+        $filename = 'Vendor_Bank_Statement_' . $vendor->company_name . '_' . date('Y-m-d') . '.pdf';
+        return $pdf->download($filename);
+        
     } catch (\Throwable $th) {
         Log::info($th->getMessage());
         return redirect(route('vendors.list'))->with([
             'status' => false,
-            'message' => 'Internal server error'
+            'message' => 'Internal server error: ' . $th->getMessage()
         ]);
     }
 }

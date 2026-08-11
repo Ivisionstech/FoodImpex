@@ -14,6 +14,27 @@
             background-color: #fff;
         }
 
+        /* Hide buttons when printing */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                padding: 10px;
+            }
+            .transactions-table th { 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+            }
+            .col-debit { background-color: #ffcccc !important; }
+            .col-credit { background-color: #ccffcc !important; }
+            .col-balance { background-color: #ffecb3 !important; }
+            .badge-type, .badge-pending, .badge-approved {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+
         .header {
             text-align: center;
             padding-bottom: 20px;
@@ -138,7 +159,6 @@
             margin-right: 5px;
         }
 
-        .badge-bill { background-color: #28a745; color: white; }
         .badge-payment { background-color: #dc3545; color: white; }
         .badge-balance { background-color: #17a2b8; color: white; }
         .badge-return { background-color: #dc3545; color: white; }
@@ -184,12 +204,103 @@
         .text-info { color: #17a2b8; }
         .text-warning { color: #ffc107; }
 
-        @media print {
-            body { padding: 0; }
-            .transactions-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .col-debit { background-color: #ffcccc !important; }
-            .col-credit { background-color: #ccffcc !important; }
-            .col-balance { background-color: #ffecb3 !important; }
+        /* Button Styles */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            text-decoration: none;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            gap: 8px;
+            min-width: 100px;
+        }
+
+        .btn i, .btn .icon {
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .btn-print {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+        .btn-print:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.5);
+        }
+
+        .btn-back {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
+        }
+        .btn-back:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.5);
+        }
+
+        .action-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+            flex-wrap: wrap;
+        }
+
+        .action-buttons .left-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .action-buttons .right-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .action-buttons .btn {
+            min-width: 120px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .action-buttons {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .action-buttons .left-group,
+            .action-buttons .right-group {
+                flex-direction: column;
+                width: 100%;
+            }
+            .action-buttons .btn {
+                width: 100%;
+                margin: 5px 0;
+            }
+        }
+
+        /* Balance DR/CR Badge */
+        .balance-dr {
+            color: #dc3545 !important;
+            font-weight: bold;
+        }
+        .balance-cr {
+            color: #28a745 !important;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -234,7 +345,30 @@
         } elseif (isset($trans_to) && $trans_to) {
             $filterInfo = 'To: ' . \Carbon\Carbon::parse($trans_to)->format('d-m-Y');
         }
+        
+        // Build back URL with filters
+        $backUrl = route('vendors.view', ['uuid' => $vendor->uuid]);
+        $params = [];
+        if (isset($trans_from) && $trans_from) $params['trans_from'] = $trans_from;
+        if (isset($trans_to) && $trans_to) $params['trans_to'] = $trans_to;
+        if (!empty($params)) {
+            $backUrl .= '?' . http_build_query($params);
+        }
     @endphp
+
+    <!-- Action Buttons - Hidden when printing -->
+    <div class="action-buttons no-print">
+        <div class="left-group">
+            <a href="{{ $backUrl }}" class="btn btn-back">
+                <span class="icon">←</span> Back
+            </a>
+        </div>
+        <div class="right-group">
+            <button onclick="window.print()" class="btn btn-print">
+                <span class="icon">🖨</span> Print
+            </button>
+        </div>
+    </div>
 
     <div class="header">
         <div class="logo-container">
@@ -294,9 +428,9 @@
                     $isApproved = ($approvalStatus == 'approved');
                     
                     // =============================================
-                    // CURRENT BALANCE = calculated_balance from controller
+                    // CURRENT BALANCE = current_balance from database (same as view)
                     // =============================================
-                    $currentBalance = isset($transaction->calculated_balance) ? $transaction->calculated_balance : 0;
+                    $currentBalance = floatval($transaction->current_balance ?? 0);
                     
                     $debitAmount = 0;
                     $creditAmount = 0;
@@ -331,20 +465,9 @@
                     }
                     
                     // =============================================
-                    // DR/CR LOGIC FOR VENDOR
+                    // DR/CR LOGIC FOR VENDOR (NO BILLS)
                     // =============================================
-                    if ($type == 'bill') {
-                        // Bill = CR (Money IN)
-                        $creditAmount = $amount;
-                        $displayType = 'Purchase Bill';
-                        $badgeClass = 'badge-bill';
-                        $badgeText = 'BILL';
-                        $drCrType = 'CR';
-                        $descriptionText = $description ?: 'Purchase from vendor';
-                        if (isset($transaction->bill) && $transaction->bill) {
-                            $descriptionText = 'Bill #' . $transaction->bill->id;
-                        }
-                    } elseif ($type == 'payment') {
+                    if ($type == 'payment') {
                         // Payment = DR (Money OUT)
                         $debitAmount = $amount;
                         $displayType = 'Payment Sent';
@@ -425,9 +548,9 @@
                         $descriptionText = $description ?: $displayType;
                     }
                     
-                    // Current Balance DR/CR
+                    // Current Balance DR/CR (using current_balance from database)
                     $drCrDisplay = $currentBalance >= 0 ? 'DR' : 'CR';
-                    $balanceClass = $currentBalance < 0 ? 'text-success' : 'text-danger';
+                    $balanceClass = $currentBalance >= 0 ? 'balance-dr' : 'balance-cr';
                     
                     // If pending, show warning
                     if (!$isApproved) {
@@ -479,7 +602,7 @@
                     <td class="dr-cr-cell {{ $drCrType == 'DR' ? 'text-danger' : 'text-success' }}">
                         {{ $drCrType }}
                     </td>
-                    <!-- BALANCE Column - Shows Vendor Account Balance -->
+                    <!-- BALANCE Column - Shows Vendor Account Balance (using current_balance from database) -->
                     <td class="balance {{ $balanceClass }}">
                         {{ number_format(abs($currentBalance), 2) }} {{ $drCrDisplay }}
                         @if(!$isApproved)
@@ -536,8 +659,10 @@
 
     <script>
         window.onload = function() {
-            // Uncomment to auto-print when PDF opens
-            // window.print();
+            // Check if URL has print parameter
+            if (window.location.search.includes('print=true')) {
+                window.print();
+            }
         };
     </script>
 </body>
