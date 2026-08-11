@@ -38,7 +38,8 @@
         }
 
         .logo-section {
-            width: 60%;
+            width: 100%;
+            text-align: center;
         }
 
         .logo {
@@ -193,7 +194,7 @@
          * LOGO HANDLING
          */
         $logoSrc = '';
-        $logoPath = public_path('images/Intikhab-logo-scaled-copy-2048x560-1.png');
+        $logoPath = public_path('images/logo.png');
 
         if (isset($companySettings) && $companySettings->logo) {
             $s_path = storage_path('app/public/' . $companySettings->logo);
@@ -209,28 +210,18 @@
     @endphp
 
     <div class="container">
-        <!-- HEADER SECTION -->
+        <!-- HEADER SECTION - Logo Centered -->
         <table class="header-table">
             <tr>
-                <td class="logo-section" style="width: 20%; text-align: left; vertical-align: middle;">
+                <td class="logo-section">
                     @if ($logoSrc)
                         <img src="{{ $logoSrc }}" alt="Logo" class="logo">
                     @else
-                        <div style="color: #34495e; font-weight: bold;">Logo</div>
+                        <div style="color: #34495e; font-weight: bold; text-align: center;">Logo</div>
                     @endif
                 </td>
-                <td style="width: 60%; text-align: center; vertical-align: middle;">
-                    <div class="info-title" style="text-align: center; margin: 0;">
-                        {{ $companySettings->name ?? 'Food Impex' }}</div>
-                    <div
-                        style="width: 80%; height: 2px; background: linear-gradient(to right, #dc2526, transparent); margin: 3px auto 0;">
-                    </div>
-                </td>
-                <td style="width: 20%;"></td>
             </tr>
         </table>
-
-
 
         <!-- PARTY DETAILS SECTION -->
         <table style="width: 100%; margin-bottom: 20px;">
@@ -451,8 +442,6 @@
                 <a href="tel:+92556816969" style="color:inherit; text-decoration:none;">+92 55 6816969</a>
             </span>
         </div>
-
-
     </div>
 </body>
 

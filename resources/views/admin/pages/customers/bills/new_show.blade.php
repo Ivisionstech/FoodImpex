@@ -1,4 +1,5 @@
 @extends('admin.layout.master')
+
 @section('content')
     <div class="container-xxl flex-grow-1 container-p-y">
         <h4 class="fw-bold py-3 mb-4">
@@ -8,7 +9,7 @@
             @else
                 <a href="{{ route('customers.list') }}">Customers</a>
             @endif
-            / Bill Details
+            / Invoice Details
         </h4>
 
         <div class="card">
@@ -29,17 +30,21 @@
                     @endif
                 </div>
             </div>
+
             <div class="card-body">
+                <!-- Info Section: Customer and Bill Metadata -->
                 <div class="row mb-4">
                     <div class="col-md-6">
-                        <h6 class="mb-3">Customer Information</h6>
+                        <h6 class="mb-3 text-primary">Customer Information</h6>
                         @if ($bill->customer)
                             <p class="mb-1"><strong>Name:</strong> {{ $bill->customer->name }}</p>
                             <p class="mb-1"><strong>Contact Person:</strong> {{ $bill->customer->person_name ?? 'N/A' }}</p>
                             <p class="mb-1"><strong>Phone:</strong> {{ $bill->customer->phone ?? 'N/A' }}</p>
                             <p class="mb-1"><strong>Email:</strong> {{ $bill->customer->email ?? 'N/A' }}</p>
                             <p class="mb-1"><strong>Address:</strong> {{ $bill->customer->address ?? 'N/A' }}</p>
-                            <p class="mb-1"><strong>Balance:</strong> PKR {{ number_format($bill->customer->balance ?? 0, 2) }}</p>
+                            <p class="mb-1"><strong>Balance:</strong> <span class="fw-bold text-{{ $bill->customer->balance >= 0 ? 'danger' : 'success' }}">
+                                PKR {{ number_format(abs($bill->customer->balance ?? 0), 2) }} {{ $bill->customer->balance >= 0 ? 'DR' : 'CR' }}
+                            </span></p>
                         @else
                             <p class="mb-1"><strong>Name:</strong> {{ $bill->customer_name ?? 'Walk-in Customer' }}</p>
                             <p class="mb-1"><strong>Phone:</strong> {{ $bill->customer_phone ?? 'N/A' }}</p>
@@ -47,11 +52,13 @@
                         @endif
                     </div>
                     <div class="col-md-6 text-md-end">
-                        <h6 class="mb-3">Bill Information</h6>
-                        <p class="mb-1"><strong>Bill Number: #</strong>{{ $bill->id }}</p>
-                        <p class="mb-1"><strong>Date:</strong> {{ $bill->bill_date ? date('d-m-Y', strtotime($bill->bill_date)) : 'N/A' }}</p>
+                        <h6 class="mb-3 text-primary">Bill Information</h6>
+                        <p class="mb-1"><strong>Bill Number:</strong> #{{ $bill->id }}</p>
+                        <p class="mb-1"><strong>Date:</strong> {{ $bill->bill_date ? date('d-m-Y h:i A', strtotime($bill->bill_date)) : 'N/A' }}</p>
+                        <p class="mb-1"><strong>Bill Type:</strong> <span class="badge bg-info">Sales</span></p>
                         <p class="mb-1"><strong>Status:</strong> 
                             <span class="badge bg-{{ $bill->approval_status == 'approved' ? 'success' : 'warning' }}">
+                                <i class="bx bx-{{ $bill->approval_status == 'approved' ? 'check-circle' : 'time' }} me-1"></i>
                                 {{ ucfirst($bill->approval_status ?? 'Pending') }}
                             </span>
                         </p>
@@ -62,68 +69,58 @@
                     </div>
                 </div>
 
+                <!-- Products Table Section with Weight Details -->
                 <div class="table-responsive mb-4">
-                    <h6 class="mb-3">Products 
-                        <span class="badge bg-primary">{{ $bill->billProducts->count() }}</span>
-                    </h6>
+                    <h6 class="mb-3 text-primary">Sales Items with Weight Details</h6>
                     @if($bill->billProducts->count() > 0)
-                        <table class="table table-bordered table-striped">
-                            <thead>
+                        <table class="table table-bordered table-striped table-sm">
+                            <thead class="table-light">
                                 <tr>
-                                    <th>#</th>
-                                    <th>Product</th>
-                                    <th>Description</th>
-                                    <th>Quantity</th>
-                                    <th>Packing (KG)</th>
-                                    <th>Total Weight</th>
-                                    <th>Bardana Weight</th>
-                                    <th>Net Weight</th>
-                                    <th>Rate per 40 KGS</th>
-                                    <th>Total</th>
+                                    <th style="width: 5%;">#</th>
+                                    <th style="width: 18%;">Product Name</th>
+                                    <th style="width: 15%;">Description</th>
+                                    <th class="text-center" style="width: 8%;">Qty</th>
+                                    <th class="text-center" style="width: 10%;">Packing (KG)</th>
+                                    <th class="text-center" style="width: 10%;">Total Wt</th>
+                                    <th class="text-center" style="width: 10%;">Bardana Wt</th>
+                                    <th class="text-center" style="width: 10%;">Net Wt</th>
+                                    <th class="text-end" style="width: 12%;">Rate/40kg</th>
+                                    <th class="text-end" style="width: 12%;">Row Total</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @php $subtotal = 0; @endphp
+                                @php $itemsSubtotal = 0; @endphp
                                 @foreach ($bill->billProducts as $index => $billProduct)
                                     @php 
-                                        $subtotal += $billProduct->total ?? 0; 
+                                        $rowTotal = $billProduct->total ?? 0;
+                                        $itemsSubtotal += $rowTotal;
                                     @endphp
                                     <tr>
-                                        <td>{{ $index + 1 }}</td>
-                                        <td>{{ $billProduct->product->name ?? 'Product Deleted' }}</td>
-                                        <td>{{ $billProduct->description ?? '-' }}</td>
-                                        <td>{{ $billProduct->quantity ?? 0 }}</td>
-                                        <td>{{ $billProduct->packing ?? '-' }}</td>
-                                        <td>{{ number_format($billProduct->total_weight ?? 0, 2) }}</td>
-                                        <td>{{ number_format($billProduct->bardana_weight ?? 0, 2) }}</td>
-                                        <td>{{ number_format($billProduct->net_weight ?? 0, 2) }}</td>
-                                        <td>PKR {{ number_format($billProduct->rate_per_40kg ?? 0, 2) }}</td>
-                                        <td>PKR {{ number_format($billProduct->total ?? 0, 2) }}</td>
+                                        <td class="text-center">{{ $index + 1 }}</td>
+                                        <td>
+                                            <strong>{{ $billProduct->product->name ?? 'Product Deleted' }}</strong>
+                                        </td>
+                                        <td>
+                                            <small>{{ $billProduct->description ?? '--' }}</small>
+                                        </td>
+                                        <td class="text-center">{{ number_format($billProduct->quantity ?? 0, 0) }}</td>
+                                        <td class="text-center">
+                                            {{ $billProduct->packing ? number_format($billProduct->packing, 2) : '--' }}
+                                        </td>
+                                        <td class="text-center">
+                                            {{ $billProduct->total_weight ? number_format($billProduct->total_weight, 2) : '--' }}
+                                        </td>
+                                        <td class="text-center">
+                                            {{ $billProduct->bardana_weight ? number_format($billProduct->bardana_weight, 2) : '--' }}
+                                        </td>
+                                        <td class="text-center">
+                                            <strong>{{ $billProduct->net_weight ? number_format($billProduct->net_weight, 2) : '--' }}</strong>
+                                        </td>
+                                        <td class="text-end">PKR {{ number_format($billProduct->rate_per_40kg ?? 0, 2) }}</td>
+                                        <td class="text-end"><strong>PKR {{ number_format($rowTotal, 2) }}</strong></td>
                                     </tr>
                                 @endforeach
                             </tbody>
-                            <tfoot>
-                                <tr class="table-active">
-                                    <th colspan="9" class="text-end">Subtotal:</th>
-                                    <th>PKR {{ number_format($subtotal, 2) }}</th>
-                                </tr>
-                                @if($bill->extraCharges->count() > 0)
-                                    @foreach ($bill->extraCharges as $charge)
-                                        <tr>
-                                            <th colspan="9" class="text-end">{{ $charge->name }}:</th>
-                                            <th>+ PKR {{ number_format($charge->amount, 2) }}</th>
-                                        </tr>
-                                    @endforeach
-                                    <tr class="table-active">
-                                        <th colspan="9" class="text-end">Extra Charges Total:</th>
-                                        <th>PKR {{ number_format($bill->extraCharges->sum('amount'), 2) }}</th>
-                                    </tr>
-                                @endif
-                                <tr class="table-success">
-                                    <th colspan="9" class="text-end"><strong>Grand Total:</strong></th>
-                                    <th><strong>PKR {{ number_format($bill->grand_total ?? $subtotal, 2) }}</strong></th>
-                                </tr>
-                            </tfoot>
                         </table>
                     @else
                         <div class="alert alert-warning">
@@ -134,50 +131,103 @@
                     @endif
                 </div>
 
-                @if ($bill->customer && $bill->transactions->isNotEmpty())
-                    <div class="row">
-                        <div class="col-12">
-                            <h6 class="mb-3">Transaction History 
-                                <span class="badge bg-info">{{ $bill->transactions->count() }}</span>
-                            </h6>
-                            <div class="table-responsive">
-                                <table class="table table-bordered">
-                                    <thead>
-                                        <tr>
-                                            <th>Date</th>
-                                            <th>Amount</th>
-                                            <th>Type</th>
-                                            <th>Balance</th>
-                                            <th>Status</th>
-                                            <th>Description</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach ($bill->transactions as $transaction)
-                                            <tr>
-                                                <td>{{ $transaction->transaction_date ? date('d-m-Y', strtotime($transaction->transaction_date)) : 'N/A' }}</td>
-                                                <td>PKR {{ number_format($transaction->amount ?? 0, 2) }}</td>
-                                                <td>
-                                                    <span class="badge bg-{{ $transaction->type == 'payment' ? 'success' : 'info' }}">
-                                                        {{ ucfirst($transaction->type ?? 'N/A') }}
-                                                    </span>
-                                                </td>
-                                                <td>PKR {{ number_format($transaction->current_balance ?? 0, 2) }}</td>
-                                                <td>
-                                                    <span class="badge bg-{{ $transaction->approval_status == 'approved' ? 'success' : 'warning' }}">
-                                                        {{ ucfirst($transaction->approval_status ?? 'Pending') }}
-                                                    </span>
-                                                </td>
-                                                <td>{{ $transaction->description ?? 'N/A' }}</td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
+                <!-- Charges Section -->
+                <div class="row mb-4">
+                    <!-- Extra Charges (Subtract) -->
+                    @if ($bill->extraCharges->count() > 0)
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-header border-bottom border-dark">
+                                    <h6 class="mb-0 text-dark"><strong>Extra Charges (Subtract)</strong></h6>
+                                </div>
+                                <div class="card-body">
+                                    @php $extraTotal = 0; @endphp
+                                    @foreach ($bill->extraCharges as $charge)
+                                        @php $extraTotal += $charge->amount; @endphp
+                                        <p class="mb-2">
+                                            <strong class="text-dark">{{ $charge->name }}:</strong> PKR
+                                            {{ number_format($charge->amount, 2) }}
+                                        </p>
+                                    @endforeach
+                                    <hr>
+                                    <p class="mb-0"><strong class="text-dark">Total Extra:</strong> PKR
+                                        {{ number_format($extraTotal, 2) }}
+                                    </p>
+                                </div>
                             </div>
                         </div>
+                    @endif
+                </div>
+
+                <!-- Footer Section: Transaction details and Totals -->
+                <div class="row mt-4">
+                    <!-- Left Side: Ledger/Balance Info -->
+                    <div class="col-md-6">
+                        <h6 class="mb-3 text-primary">Ledger Impact</h6>
+                        @if ($bill->transactions && $bill->transactions->isNotEmpty())
+                            @php $latestTransaction = $bill->transactions->last(); @endphp
+                            <div class="p-3 border rounded bg-light">
+                                <p class="mb-1"><strong>Transaction Date:</strong>
+                                    {{ $latestTransaction->transaction_date ? date('d-m-Y', strtotime($latestTransaction->transaction_date)) : 'N/A' }}</p>
+                                <p class="mb-1"><strong>Entry Type:</strong>
+                                    {{ ucfirst($latestTransaction->type ?? 'Bill') }}</p>
+                                <p class="mb-0"><strong>Customer Balance after this Bill:</strong>
+                                    <span class="fw-bold text-{{ $latestTransaction->current_balance >= 0 ? 'danger' : 'success' }}">
+                                        PKR {{ number_format(abs($latestTransaction->current_balance ?? 0), 2) }} 
+                                        {{ $latestTransaction->current_balance >= 0 ? 'DR' : 'CR' }}
+                                    </span>
+                                </p>
+                            </div>
+                        @else
+                            <div class="p-3 border rounded bg-light">
+                                <p class="mb-0 text-muted">No transaction record found for this bill.</p>
+                            </div>
+                        @endif
                     </div>
-                @endif
+
+                    <!-- Right Side: Final Bill Calculations -->
+                    <div class="col-md-6 text-md-end">
+                        <div class="invoice-summary">
+                            <p class="mb-2">Subtotal (Products): <strong>PKR
+                                    {{ number_format($itemsSubtotal, 2) }}</strong></p>
+
+                            @if ($bill->extraCharges->count() > 0)
+                                @php $extraTotal = $bill->extraCharges->sum('amount'); @endphp
+                                <p class="mb-2 text-danger">Extra Charges: <strong>-PKR
+                                        {{ number_format($extraTotal, 2) }}</strong></p>
+                            @endif
+
+                            <hr class="my-3">
+                            <h4 class="fw-bold text-primary">
+                                Grand Total: PKR {{ number_format($bill->grand_total ?? $itemsSubtotal, 2) }}
+                            </h4>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 @endsection
+
+@push('styles')
+<style>
+    .table-sm th, .table-sm td {
+        font-size: 0.875rem;
+        vertical-align: middle;
+    }
+    .bg-light {
+        background-color: #f8f9fa !important;
+    }
+    .invoice-summary {
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 0.375rem;
+    }
+    .text-primary {
+        color: #696cff !important;
+    }
+    .border-dark {
+        border-color: #dee2e6 !important;
+    }
+</style>
+@endpush
