@@ -279,7 +279,7 @@
                     default: icon = '<i class="fas fa-building"></i>'; badge = '';
                 }
                 
-                var balanceHtml = balance ? `<small class="text-muted ms-2">Balance: PKR ${parseFloat(balance).toLocaleString()}</small>` : '';
+                var balanceHtml = balance !== undefined && balance !== null ? `<small class="text-muted ms-2">Balance: PKR ${parseFloat(balance).toLocaleString()}</small>` : '';
                 return $(`<div class="d-flex align-items-center justify-content-between w-100"><div>${icon} <span>${option.text}</span>${badge}${balanceHtml}</div></div>`);
             }
             
@@ -361,8 +361,10 @@
                 let banksHtml = '';
                 @if(isset($banks) && $banks->count() > 0)
                     @foreach ($banks as $bank)
-                        @php $balance = property_exists($bank, 'account_balance') ? $bank->account_balance : (property_exists($bank, 'balance') ? $bank->balance : 0); @endphp
-                        banksHtml += `<option value="bank_{{ $bank->id }}" data-type="bank" data-name="{{ $bank->name }}" data-balance="{{ $balance }}" ${accountValue == 'bank_{{ $bank->id }}' ? 'selected' : ''}>🏦 {{ $bank->name }} (Bank) - Balance: PKR {{ number_format($balance, 2) }}</option>`;
+                        @php 
+                            $bankBalance = $bank->account_balance ?? $bank->balance ?? 0; 
+                        @endphp
+                        banksHtml += `<option value="bank_{{ $bank->id }}" data-type="bank" data-name="{{ $bank->name }}" data-balance="{{ $bankBalance }}" ${accountValue == 'bank_{{ $bank->id }}' ? 'selected' : ''}>🏦 {{ $bank->name }} (Bank) - Balance: PKR {{ number_format($bankBalance, 2) }}</option>`;
                     @endforeach
                 @endif
                 
