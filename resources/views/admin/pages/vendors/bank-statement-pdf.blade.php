@@ -102,6 +102,9 @@
             font-weight: bold;
         }
 
+        .amount-debit { color: #dc3545 !important; }
+        .amount-credit { color: #28a745 !important; }
+
         .dr-cr-cell {
             text-align: center !important;
             font-weight: bold;
@@ -135,12 +138,15 @@
             margin-right: 5px;
         }
 
-        .badge-bill { background-color: #dc3545; color: white; }
-        .badge-payment { background-color: #28a745; color: white; }
+        .badge-bill { background-color: #28a745; color: white; }
+        .badge-payment { background-color: #dc3545; color: white; }
         .badge-balance { background-color: #17a2b8; color: white; }
-        .badge-return { background-color: #ffc107; color: #333; }
+        .badge-return { background-color: #dc3545; color: white; }
+        .badge-general { background-color: #6c757d; color: white; }
         .badge-debit { background-color: #dc3545; color: white; }
         .badge-credit { background-color: #28a745; color: white; }
+        .badge-pending { background-color: #ffc107; color: #333; }
+        .badge-approved { background-color: #28a745; color: white; }
 
         .summary-section {
             margin-top: 20px;
@@ -176,11 +182,14 @@
         .text-danger { color: #dc3545; }
         .text-success { color: #28a745; }
         .text-info { color: #17a2b8; }
+        .text-warning { color: #ffc107; }
 
         @media print {
             body { padding: 0; }
-            .transactions-table th { -webkit-print-color-adjust: exact; }
-            .summary-section { -webkit-print-color-adjust: exact; }
+            .transactions-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .col-debit { background-color: #ffcccc !important; }
+            .col-credit { background-color: #ccffcc !important; }
+            .col-balance { background-color: #ffecb3 !important; }
         }
     </style>
 </head>
@@ -203,39 +212,28 @@
             $logoSrc = 'data:image/' . pathinfo($logoPath, PATHINFO_EXTENSION) . ';base64,' . $logoData;
         }
         
-        // Sort transactions in ascending order by date
-        $sortedTransactions = $vendorTransactions->sortBy(function($transaction) {
-            return $transaction->date ? \Carbon\Carbon::parse($transaction->date) : \Carbon\Carbon::minValue();
-        });
+        $netBalance = ($totalCredits ?? 0) - ($totalDebits ?? 0);
         
-        // Calculate summary totals
-        $totalBills = 0;
-        $totalPayments = 0;
-        $totalDebits = 0;
-        $totalCredits = 0;
-        
-        foreach($sortedTransactions as $transaction) {
-            // For bill transactions
-            if($transaction->type == 'bill') {
-                $totalBills += $transaction->amount;
-                $totalCredits += $transaction->amount;
-            }
-            // For payment transactions
-            elseif($transaction->type == 'payment') {
-                $totalPayments += $transaction->amount;
-                $totalDebits += $transaction->amount;
-            }
-            // For general entries with transaction_type
-            elseif(isset($transaction->transaction_type)) {
-                if($transaction->transaction_type == 'debit') {
-                    $totalDebits += $transaction->amount;
-                } elseif($transaction->transaction_type == 'credit') {
-                    $totalCredits += $transaction->amount;
-                }
+        // Calculate approved and pending counts
+        $approvedCount = 0;
+        $pendingCount = 0;
+        foreach ($vendorTransactions as $transaction) {
+            if (isset($transaction->is_approved) && $transaction->is_approved) {
+                $approvedCount++;
+            } else {
+                $pendingCount++;
             }
         }
         
-        $netBalance = $totalCredits - $totalDebits;
+        // Filter info
+        $filterInfo = '';
+        if (isset($trans_from) && isset($trans_to) && $trans_from && $trans_to) {
+            $filterInfo = 'Period: ' . \Carbon\Carbon::parse($trans_from)->format('d-m-Y') . ' to ' . \Carbon\Carbon::parse($trans_to)->format('d-m-Y');
+        } elseif (isset($trans_from) && $trans_from) {
+            $filterInfo = 'From: ' . \Carbon\Carbon::parse($trans_from)->format('d-m-Y');
+        } elseif (isset($trans_to) && $trans_to) {
+            $filterInfo = 'To: ' . \Carbon\Carbon::parse($trans_to)->format('d-m-Y');
+        }
     @endphp
 
     <div class="header">
@@ -257,11 +255,16 @@
     <div class="vendor-details">
         <div class="party-name">PARTY NAME: {{ strtoupper($vendor->company_name) }}</div>
         <div class="address">ADDRESS: {{ strtoupper($vendor->address ?? 'N/A') }}</div>
-        <div class="current-balance" style="margin-top: 8px; font-size: 14px;">
+        <div style="font-size: 12px; margin-top: 5px;">PHONE: {{ $vendor->phone ?? 'N/A' }}</div>
+        @if($filterInfo)
+            <div style="font-size: 12px; margin-top: 5px; color: #666;">{{ $filterInfo }}</div>
+        @endif
+        <div style="font-size: 13px; margin-top: 8px; font-weight: bold;">
             Current Balance: 
-            <strong style="color: {{ $vendor->balance < 0 ? '#dc3545' : '#28a745' }}">
-                PKR {{ number_format(abs($vendor->balance), 2) }}{{ $vendor->balance < 0 ? ' DR' : ' CR' }}
-            </strong>
+            <span style="color: {{ ($vendor->balance ?? 0) < 0 ? '#28a745' : '#dc3545' }}">
+                PKR {{ number_format(abs($vendor->balance ?? 0), 2) }} {{ ($vendor->balance ?? 0) < 0 ? 'CR' : 'DR' }}
+            </span>
+            <span style="font-size: 10px; color: #666;">(Approved Only)</span>
         </div>
     </div>
 
@@ -281,127 +284,182 @@
             </tr>
         </thead>
         <tbody>
-            @forelse($sortedTransactions as $index => $transaction)
+            @forelse($vendorTransactions as $index => $transaction)
                 @php
-                    // Determine transaction details
+                    $type = strtolower($transaction->type ?? '');
+                    $transactionType = $transaction->transaction_type ?? '';
+                    $amount = floatval($transaction->amount ?? 0);
+                    $description = $transaction->description ?? '';
+                    $approvalStatus = $transaction->approval_status ?? 'pending';
+                    $isApproved = ($approvalStatus == 'approved');
+                    
+                    // =============================================
+                    // CURRENT BALANCE = calculated_balance from controller
+                    // =============================================
+                    $currentBalance = isset($transaction->calculated_balance) ? $transaction->calculated_balance : 0;
+                    
                     $debitAmount = 0;
                     $creditAmount = 0;
-                    $transactionTypeText = '';
+                    $displayType = '';
                     $badgeClass = '';
                     $badgeText = '';
                     $descriptionText = '';
+                    $drCrType = '';
+                    $isGeneralEntry = false;
+                    $isOpeningBalance = false;
+                    $statusBadge = '';
+                    $statusText = '';
                     
-                    // Check for regular transaction type (bill, payment, return, balance)
-                    if ($transaction->type == 'bill') {
-                        $creditAmount = $transaction->amount;
-                        $transactionTypeText = 'Bill';
+                    // Determine if Opening Balance or General Entry
+                    if ($type == 'balance') {
+                        if (stripos($description, 'Opening Balance') !== false) {
+                            $isOpeningBalance = true;
+                        } else {
+                            $isGeneralEntry = true;
+                        }
+                    } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
+                        $isGeneralEntry = true;
+                    }
+                    
+                    // Status Badge
+                    if ($isApproved) {
+                        $statusBadge = 'badge-approved';
+                        $statusText = 'Approved';
+                    } else {
+                        $statusBadge = 'badge-pending';
+                        $statusText = 'Pending';
+                    }
+                    
+                    // =============================================
+                    // DR/CR LOGIC FOR VENDOR
+                    // =============================================
+                    if ($type == 'bill') {
+                        // Bill = CR (Money IN)
+                        $creditAmount = $amount;
+                        $displayType = 'Purchase Bill';
                         $badgeClass = 'badge-bill';
                         $badgeText = 'BILL';
-                        $descriptionText = 'Purchase Bill #' . ($transaction->bill->id ?? 'N/A');
-                        if($transaction->description) {
-                            $descriptionText .= ' - ' . $transaction->description;
+                        $drCrType = 'CR';
+                        $descriptionText = $description ?: 'Purchase from vendor';
+                        if (isset($transaction->bill) && $transaction->bill) {
+                            $descriptionText = 'Bill #' . $transaction->bill->id;
                         }
-                    } 
-                    elseif ($transaction->type == 'payment') {
-                        $debitAmount = $transaction->amount;
-                        $transactionTypeText = 'Payment';
+                    } elseif ($type == 'payment') {
+                        // Payment = DR (Money OUT)
+                        $debitAmount = $amount;
+                        $displayType = 'Payment Sent';
                         $badgeClass = 'badge-payment';
                         $badgeText = 'PAYMENT';
-                        $descriptionText = 'Payment Sent';
-                        if($transaction->send_via) {
+                        $drCrType = 'DR';
+                        $descriptionText = $description ?: 'Payment to vendor';
+                        if (isset($transaction->send_via) && $transaction->send_via) {
                             $descriptionText .= ' via ' . ucfirst($transaction->send_via);
                         }
-                        if($transaction->description) {
-                            $descriptionText .= ' - ' . $transaction->description;
-                        }
-                    } 
-                    elseif ($transaction->type == 'return') {
-                        // Return - Credit amount (money coming back to vendor)
-                        $creditAmount = $transaction->amount;
-                        $transactionTypeText = 'Return';
-                        $badgeClass = 'badge-return';
-                        $badgeText = 'RETURN';
-                        $descriptionText = 'Product Return';
-                        if($transaction->description) {
-                            $descriptionText .= ' - ' . $transaction->description;
-                        }
-                    } 
-                    elseif ($transaction->type == 'balance') {
-                        // Opening balance - show as credit if positive, debit if negative
-                        if($transaction->amount > 0) {
-                            $creditAmount = $transaction->amount;
+                    } elseif ($isOpeningBalance) {
+                        // Opening Balance
+                        if ($amount > 0) {
+                            $creditAmount = $amount;
+                            $drCrType = 'CR';
                         } else {
-                            $debitAmount = abs($transaction->amount);
+                            $debitAmount = abs($amount);
+                            $drCrType = 'DR';
                         }
-                        $transactionTypeText = 'Opening Balance';
+                        $displayType = 'Opening Balance';
                         $badgeClass = 'badge-balance';
                         $badgeText = 'OPENING';
                         $descriptionText = 'Opening Balance';
-                        if($transaction->description) {
-                            $descriptionText .= ' - ' . $transaction->description;
+                    } elseif ($isGeneralEntry) {
+                        // General Entry
+                        $displayType = 'General Entry';
+                        $badgeClass = 'badge-general';
+                        $badgeText = 'GENERAL';
+                        
+                        if ($transactionType == 'credit') {
+                            $creditAmount = $amount;
+                            $drCrType = 'CR';
+                        } elseif ($transactionType == 'debit') {
+                            $debitAmount = $amount;
+                            $drCrType = 'DR';
+                        } else {
+                            if ($amount > 0) {
+                                $creditAmount = $amount;
+                                $drCrType = 'CR';
+                            } else {
+                                $debitAmount = abs($amount);
+                                $drCrType = 'DR';
+                            }
                         }
-                    }
-                    // Check for general entry transactions (transaction_type field)
-                    elseif (isset($transaction->transaction_type)) {
-                        if ($transaction->transaction_type == 'debit') {
-                            $debitAmount = $transaction->amount;
-                            $transactionTypeText = 'Debit Entry';
-                            $badgeClass = 'badge-debit';
-                            $badgeText = 'DEBIT';
-                            $descriptionText = 'General Transaction (Debit)';
-                        } elseif ($transaction->transaction_type == 'credit') {
-                            $creditAmount = $transaction->amount;
-                            $transactionTypeText = 'Credit Entry';
-                            $badgeClass = 'badge-credit';
-                            $badgeText = 'CREDIT';
-                            $descriptionText = 'General Transaction (Credit)';
-                        }
-                        if($transaction->description) {
-                            $descriptionText .= ' - ' . $transaction->description;
-                        }
-                    }
-                    // Fallback for any other type
-                    else {
-                        $creditAmount = $transaction->amount;
-                        $transactionTypeText = ucfirst($transaction->type);
-                        $badgeClass = 'badge-balance';
-                        $badgeText = strtoupper($transaction->type);
-                        $descriptionText = $transaction->description ?? $transactionTypeText;
-                    }
-                    
-                    // Get the current balance for this transaction
-                    $currentBalance = isset($transaction->current_balance) ? floatval($transaction->current_balance) : 0;
-                    $balanceDisplay = number_format(abs($currentBalance), 2);
-                    $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
-                    
-                    // Format balance with DR/CR suffix for negative balances
-                    if ($currentBalance < 0) {
-                        $finalBalanceDisplay = $balanceDisplay . ' DR';
+                        $descriptionText = $description ?: 'General Entry';
+                    } elseif ($type == 'return') {
+                        $debitAmount = $amount;
+                        $displayType = 'Return';
+                        $badgeClass = 'badge-return';
+                        $badgeText = 'RETURN';
+                        $drCrType = 'DR';
+                        $descriptionText = $description ?: 'Product return';
+                    } elseif ($type == 'credit') {
+                        $creditAmount = $amount;
+                        $displayType = 'Credit Entry';
+                        $badgeClass = 'badge-credit';
+                        $badgeText = 'CREDIT';
+                        $drCrType = 'CR';
+                        $descriptionText = $description ?: 'Credit transaction';
+                    } elseif ($type == 'debit') {
+                        $debitAmount = $amount;
+                        $displayType = 'Debit Entry';
+                        $badgeClass = 'badge-debit';
+                        $badgeText = 'DEBIT';
+                        $drCrType = 'DR';
+                        $descriptionText = $description ?: 'Debit transaction';
                     } else {
-                        $finalBalanceDisplay = $balanceDisplay . ' CR';
+                        if ($amount > 0) {
+                            $creditAmount = $amount;
+                            $drCrType = 'CR';
+                        } else {
+                            $debitAmount = abs($amount);
+                            $drCrType = 'DR';
+                        }
+                        $displayType = ucfirst($type) ?: 'Entry';
+                        $badgeClass = 'badge-general';
+                        $badgeText = strtoupper($type) ?: 'ENTRY';
+                        $descriptionText = $description ?: $displayType;
                     }
+                    
+                    // Current Balance DR/CR
+                    $drCrDisplay = $currentBalance >= 0 ? 'DR' : 'CR';
+                    $balanceClass = $currentBalance < 0 ? 'text-success' : 'text-danger';
+                    
+                    // If pending, show warning
+                    if (!$isApproved) {
+                        $balanceClass = 'text-warning';
+                    }
+                    
+                    $transactionDate = $transaction->date ?? $transaction->created_at ?? now();
                 @endphp
                 <tr>
                     <td style="text-align: center;">{{ $index + 1 }}</td>
                     <td style="text-align: center;">
-                        {{ $transaction->date ? \Carbon\Carbon::parse($transaction->date)->format('d-m-Y') : '-' }}
-                        @if(isset($transaction->created_at) && $transaction->date != $transaction->created_at)
-                            <div style="font-size: 9px; color: #666;">
-                                {{ \Carbon\Carbon::parse($transaction->date)->format('h:i A') }}
-                            </div>
-                        @endif
+                        {{ \Carbon\Carbon::parse($transactionDate)->format('d-m-Y') }}
+                        <div style="font-size: 9px; color: #666;">
+                            {{ \Carbon\Carbon::parse($transactionDate)->format('h:i A') }}
+                        </div>
                     </td>
                     <td>
                         <span class="badge-type {{ $badgeClass }}">{{ $badgeText }}</span>
-                        <strong>{{ $descriptionText }}</strong>
-                        @if(isset($transaction->bill) && $transaction->bill && $transaction->bill->date)
-                            <div class="item-desc">Bill Date: {{ \Carbon\Carbon::parse($transaction->bill->date)->format('d-m-Y') }}</div>
+                        <strong>{{ $displayType }}</strong>
+                        @if($descriptionText && $descriptionText != $displayType)
+                            <div class="item-desc">{{ $descriptionText }}</div>
                         @endif
-                        @if(!empty($transaction->notes))
-                            <div class="item-desc">{{ $transaction->notes }}</div>
+                        @if(isset($transaction->send_via) && $transaction->send_via)
+                            <span style="font-size: 9px; color: #666;">via {{ ucfirst($transaction->send_via) }}</span>
+                        @endif
+                        <br>
+                        <span class="badge {{ $statusBadge }}" style="font-size: 8px; padding: 2px 6px;">{{ $statusText }}</span>
+                        @if(!$isApproved)
+                            <span style="font-size: 8px; color: #ffc107; margin-left: 5px;">(Not affecting balance)</span>
                         @endif
                     </td>
-                    <!-- DEBIT Column - Shows money going OUT (Payments, Debits) -->
+                    <!-- DEBIT Column - Money OUT -->
                     <td class="amount-debit">
                         @if($debitAmount > 0)
                             {{ number_format($debitAmount, 2) }}
@@ -409,7 +467,7 @@
                             —
                         @endif
                     </td>
-                    <!-- CREDIT Column - Shows money coming IN (Bills, Credits) -->
+                    <!-- CREDIT Column - Money IN -->
                     <td class="amount-credit">
                         @if($creditAmount > 0)
                             {{ number_format($creditAmount, 2) }}
@@ -417,19 +475,22 @@
                             —
                         @endif
                     </td>
-                    <!-- DR/CR Column - Shows current balance status -->
-                    <td class="dr-cr-cell">
-                        {{ $drCrDisplay }}
+                    <!-- DR/CR Column -->
+                    <td class="dr-cr-cell {{ $drCrType == 'DR' ? 'text-danger' : 'text-success' }}">
+                        {{ $drCrType }}
                     </td>
-                    <!-- BALANCE Column - Shows current balance with DR/CR suffix -->
-                    <td class="balance">
-                        {{ $finalBalanceDisplay }}
+                    <!-- BALANCE Column - Shows Vendor Account Balance -->
+                    <td class="balance {{ $balanceClass }}">
+                        {{ number_format(abs($currentBalance), 2) }} {{ $drCrDisplay }}
+                        @if(!$isApproved)
+                            <br><span style="font-size: 8px; color: #ffc107;">(Pending)</span>
+                        @endif
                     </td>
                 </tr>
             @empty
                 <tr>
                     <td colspan="7" style="text-align: center; padding: 20px;">
-                        No transactions found for the selected period.
+                        No transactions found for this vendor.
                     </td>
                 </tr>
             @endforelse
@@ -440,28 +501,36 @@
     <div class="summary-section">
         <div class="summary-title">STATEMENT SUMMARY</div>
         <div class="summary-row">
-            <span class="summary-label">Total Purchases (Credit / Bills / Inward):</span>
-            <span class="summary-value text-success">PKR {{ number_format($totalCredits, 2) }}</span>
+            <span class="summary-label">Total Debits (Payment/Outward):</span>
+            <span class="summary-value text-danger">PKR {{ number_format($totalDebits ?? 0, 2) }}</span>
         </div>
         <div class="summary-row">
-            <span class="summary-label">Total Payments (Debit / Outward):</span>
-            <span class="summary-value text-danger">PKR {{ number_format($totalDebits, 2) }}</span>
+            <span class="summary-label">Total Credits (Purchase/Inward):</span>
+            <span class="summary-value text-success">PKR {{ number_format($totalCredits ?? 0, 2) }}</span>
         </div>
         <div class="summary-row">
             <span class="summary-label">Net Balance:</span>
-            <span class="summary-value {{ $netBalance >= 0 ? 'text-success' : 'text-danger' }}">
-                PKR {{ number_format(abs($netBalance), 2) }} {{ $netBalance >= 0 ? 'CR' : 'DR' }}
+            <span class="summary-value {{ $netBalance >= 0 ? 'text-danger' : 'text-success' }}">
+                PKR {{ number_format(abs($netBalance), 2) }} {{ $netBalance >= 0 ? 'DR' : 'CR' }}
             </span>
         </div>
         <div class="summary-row">
             <span class="summary-label">Total Transactions:</span>
-            <span class="summary-value">{{ $sortedTransactions->count() }}</span>
+            <span class="summary-value">{{ count($vendorTransactions) }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Approved Transactions:</span>
+            <span class="summary-value text-success">{{ $approvedCount }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Pending Transactions:</span>
+            <span class="summary-value text-warning">{{ $pendingCount }}</span>
         </div>
     </div>
 
     <div class="footer">
-        <p>This statement contains {{ $sortedTransactions->count() }} transaction(s) in chronological order.</p>
-        <p><strong>{{ $companySettings->name ?? '' }}</strong> - Generated on {{ now()->format('F j, Y \a\t g:i A') }}</p>
+        <p>This statement contains {{ count($vendorTransactions) }} transaction(s) in chronological order.</p>
+        <p><strong>{{ $companySettings->name ?? 'Intekhab Sanitary Fittings' }}</strong> - Generated on {{ now()->format('F j, Y \a\t g:i A') }}</p>
         <p style="font-size: 10px; color: #999;">* This is a system-generated document. No signature required. *</p>
     </div>
 

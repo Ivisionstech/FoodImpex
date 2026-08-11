@@ -58,7 +58,7 @@ class VendorBillController extends Controller
     }
 
     /**
-     * Approve a pending bill and update stock (Admin only)
+     * Approve a pending bill and update stock, product, and vendor balance (Admin only)
      */
     public function approveBill($uuid)
     {
@@ -76,8 +76,15 @@ class VendorBillController extends Controller
                 ], 400);
             }
             
+            // Update bill approval status
             $bill->approval_status = 'approved';
             $bill->save();
+            
+            // =============================================
+            // UPDATE VENDOR BALANCE ON APPROVAL
+            // =============================================
+            $vendor = $bill->vendor;
+            $vendor->increment('balance', $bill->total_amount);
             
             // ADD STOCK AND UPDATE PRODUCT DETAILS FOR EACH PRODUCT IN THE BILL
             foreach ($bill->billProducts as $billProduct) {
@@ -118,7 +125,9 @@ class VendorBillController extends Controller
                 }
             }
             
-            // Update vendor transaction description
+            // =============================================
+            // CRITICAL FIX: Update vendor transaction with approval_status
+            // =============================================
             $vendorTransaction = VendorTransaction::where('bill_id', $bill->id)
                 ->where('type', 'bill')
                 ->first();
@@ -126,6 +135,8 @@ class VendorBillController extends Controller
             if ($vendorTransaction) {
                 $vendorTransaction->update([
                     'description' => 'Purchase Bill Approved: ' . $bill->billProducts->count() . ' items from ' . ($bill->vendor->company_name ?? 'Vendor'),
+                    'approval_status' => 'approved', // ✅ THIS FIXES THE STATUS ISSUE
+                    'current_balance' => $vendor->balance,
                 ]);
             }
             
@@ -133,90 +144,12 @@ class VendorBillController extends Controller
             
             return response()->json([
                 'success' => true,
-                'message' => 'Bill approved successfully. Stock, Net Weight & Rate have been updated.'
+                'message' => 'Bill approved successfully. Stock, Net Weight, Rate & Vendor Balance have been updated.'
             ]);
             
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('Approve Bill Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Approval failed: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * NEW METHOD: Approve a pending vendor payment (Admin only)
-     */
-    public function approveVendorPayment($uuid)
-    {
-        if (!$this->isAdmin()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Access Denied. Only Admin can approve payments.'
-            ], 403);
-        }
-
-        try {
-            DB::beginTransaction();
-            
-            $payment = VendorTransaction::where('uuid', $uuid)->firstOrFail();
-            
-            if ($payment->approval_status === 'approved') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Payment already approved.'
-                ], 400);
-            }
-            
-            $payment->approval_status = 'approved';
-            $payment->save();
-            
-            // Update vendor balance (decrease balance - paid to vendor)
-            $vendor = $payment->vendor;
-            $vendor->decrement('balance', $payment->amount);
-            $payment->current_balance = $vendor->balance;
-            $payment->save();
-            
-            // Update bank or cash balance
-            if ($payment->send_via == 'bank') {
-                $bank = Bank::find($payment->bank_id);
-                if ($bank) {
-                    $bank->decrement('account_balance', $payment->amount);
-                    
-                    BankTransaction::where('vendor_transaction_id', $payment->id)->update([
-                        'balance' => $bank->account_balance,
-                        'description' => 'Payment to ' . ($vendor->company_name ?? 'Vendor') . ' (Approved)',
-                    ]);
-                }
-            } else {
-                $cash = Cash::first();
-                if ($cash) {
-                    $cash->decrement('balance', $payment->amount);
-                    
-                    CashTransaction::where('vendor_transaction_id', $payment->id)->update([
-                        'balance' => $cash->balance,
-                        'description' => 'Payment to ' . ($vendor->company_name ?? 'Vendor') . ' (Approved)',
-                    ]);
-                }
-            }
-            
-            // Update daybook entry
-            Daybook::where('vendor_transaction_id', $payment->id)->update([
-                'description' => 'Payment to ' . ($vendor->company_name ?? 'Vendor') . ' (Approved)',
-            ]);
-            
-            DB::commit();
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Payment approved successfully. Vendor balance updated.'
-            ]);
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Approve Vendor Payment Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Approval failed: ' . $e->getMessage()
@@ -280,11 +213,11 @@ class VendorBillController extends Controller
     }
 
     /**
-     * Finalized General Store Function - NO STOCK UPDATE
+     * Finalized General Store Function - NO STOCK UPDATE & NO BALANCE UPDATE
      */
     public function generalStore(Request $request): RedirectResponse
     {
-        \Log::info('===== generalStore() STARTED - This method should NOT update stock or product =====');
+        \Log::info('===== generalStore() STARTED - This method should NOT update stock, product, or vendor balance =====');
         
         $request->validate([
             'vendor_id' => 'required|exists:vendors,id',
@@ -355,9 +288,8 @@ class VendorBillController extends Controller
                     \Log::info('New product created: ' . $product->name . ' - Stock: 0 (pending approval)');
                 } else {
                     $productId = $productData['product_id'];
-                    // DO NOT UPDATE PRODUCT HERE - Keep existing values
                     $product = Product::findOrFail($productId);
-                    \Log::info('Existing product used: ' . $product->name . ' - Current stock: ' . $product->stock);
+                    \Log::info('Existing product used: ' . $product->name . ' - Current stock: ' . $product->stock . ' (will be updated on approval)');
                 }
 
                 // Save bill product (WITHOUT updating stock or product)
@@ -409,10 +341,13 @@ class VendorBillController extends Controller
             // Update bill total
             $bill->update(['total_amount' => $grandTotalAmount]);
 
-            // Update vendor balance (liability increases)
-            $vendor->increment('balance', $grandTotalAmount);
+            // =============================================
+            // FIX: DO NOT UPDATE VENDOR BALANCE HERE!
+            // Balance will be updated when bill is APPROVED
+            // =============================================
+            // $vendor->increment('balance', $grandTotalAmount); // REMOVED
 
-            // Record vendor transaction
+            // Record vendor transaction with PENDING status
             VendorTransaction::create([
                 'uuid' => (string) Str::uuid(),
                 'date' => $request->date,
@@ -420,18 +355,19 @@ class VendorBillController extends Controller
                 'description' => 'Purchase Bill (Pending Approval): ' . count($request->products) . ' items from ' . $vendor->company_name,
                 'type' => 'bill',
                 'transaction_type' => 'credit',
-                'current_balance' => $vendor->balance,
+                'current_balance' => $vendor->balance, // Current balance WITHOUT this bill
                 'bill_id' => $bill->id,
                 'vendor_id' => $vendor->id,
+                'approval_status' => 'pending', // PENDING - does NOT affect balance
             ]);
 
             DB::commit();
 
-            \Log::info('===== generalStore() COMPLETED - Stock and Product NOT updated for Bill ID: ' . $bill->id . ' =====');
+            \Log::info('===== generalStore() COMPLETED - Stock, Product, and Vendor Balance NOT updated for Bill ID: ' . $bill->id . ' =====');
 
             return redirect()
                 ->route('vendors.view', $vendor->uuid)
-                ->with('success', 'Bill created successfully and sent for Admin approval. Stock will be updated after approval.');
+                ->with('success', 'Bill created successfully and sent for Admin approval. Stock, product details, and vendor balance will be updated after approval.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -658,6 +594,7 @@ class VendorBillController extends Controller
                     'amount' => $grandTotalAmount,
                     'description' => 'Purchase Bill Updated: ' . count($request->products) . ' items from ' . $vendor->company_name,
                     'current_balance' => $vendor->fresh()->balance,
+                    'approval_status' => 'pending', // Reset to pending on update
                 ]);
             }
 
@@ -720,7 +657,6 @@ class VendorBillController extends Controller
             $fromDate = $request->from_date;
             $toDate = $request->to_date;
             $type = $request->type;
-            $approvalStatus = $request->approval_status;
 
             if (!$fromDate && !$toDate) {
                 $fromDate = '2026-01-01';
@@ -734,9 +670,6 @@ class VendorBillController extends Controller
             }
             if ($toDate) {
                 $paymentsQuery->whereDate('date', '<=', $toDate);
-            }
-            if ($approvalStatus && in_array($approvalStatus, ['pending', 'approved'])) {
-                $paymentsQuery->where('approval_status', $approvalStatus);
             }
 
             $payments = $paymentsQuery->orderBy('date', 'desc')->get();
@@ -796,7 +729,6 @@ class VendorBillController extends Controller
                         ->where('type', 'transaction')
                         ->when($fromDate, fn($q) => $q->whereDate('transaction_date', '>=', $fromDate))
                         ->when($toDate, fn($q) => $q->whereDate('transaction_date', '<=', $toDate))
-                        ->when($approvalStatus, fn($q) => $q->where('approval_status', $approvalStatus))
                         ->orderBy('transaction_date', 'desc')
                         ->get()
                         ->map(fn($item) => (object)[
@@ -813,7 +745,6 @@ class VendorBillController extends Controller
                             'is_payment' => false,
                             'source' => 'daybook',
                             'amount_class' => 'text-primary',
-                            'approval_status' => $item->approval_status ?? 'pending',
                         ]);
                     
                     $generalEntries = $generalEntries->concat($daybookEntries);
@@ -1041,7 +972,7 @@ class VendorBillController extends Controller
      */
     public function store(Request $request, $uuid): RedirectResponse
     {
-        \Log::info('===== store() called =====');
+        Log::info('===== store() called - This method should NOT update stock =====');
 
         try {
             DB::beginTransaction();
@@ -1105,7 +1036,9 @@ class VendorBillController extends Controller
 
             $bill->update(['total_amount' => $totalAmount]);
 
-            $vendor->increment('balance', $totalAmount);
+            // FIX: DO NOT update vendor balance here - only on approval
+            // $vendor->increment('balance', $totalAmount); // REMOVED
+            
             VendorTransaction::create([
                 'uuid' => (string) Str::uuid(),
                 'date' => $request->date,
@@ -1116,6 +1049,7 @@ class VendorBillController extends Controller
                 'current_balance' => $vendor->balance,
                 'bill_id' => $bill->id,
                 'vendor_id' => $vendor->id,
+                'approval_status' => 'pending', // PENDING - does NOT affect balance
             ]);
 
             DB::commit();
@@ -1276,6 +1210,7 @@ class VendorBillController extends Controller
                     'date' => $request->date,
                     'amount' => $totalAmount,
                     'description' => 'Purchase Bill Updated: from ' . $vendor->company_name,
+                    'approval_status' => 'pending', // Reset to pending on update
                 ]);
             }
 
@@ -1365,14 +1300,13 @@ class VendorBillController extends Controller
         }
     }
     
-    /**
-     * UPDATED: Store Send Payment - PENDING APPROVAL, NO BALANCE UPDATE
-     */
     public function storeSendPayment(SendPaymentRequest $request, $uuid)
     {
         try {
             DB::beginTransaction();
             $vendor = Vendor::where('uuid', $uuid)->firstOrFail();
+
+            $newBalance = $vendor->balance - $request->amount;
 
             $vendorTransaction = VendorTransaction::create([
                 'uuid' => (string) Str::uuid(),
@@ -1381,10 +1315,10 @@ class VendorBillController extends Controller
                 'send_via' => $request->send_via,
                 'type' => 'payment',
                 'transaction_type' => 'debit',
-                'approval_status' => 'pending', // PENDING APPROVAL
                 'description' => 'Payment sent to ' . $vendor->company_name . ' (Pending Approval)',
                 'current_balance' => $vendor->balance, // Balance NOT updated yet
                 'vendor_id' => $vendor->id,
+                'approval_status' => 'pending', // PENDING - does NOT affect balance
             ]);
 
             if ($request->send_via == 'bank') {
@@ -1406,11 +1340,14 @@ class VendorBillController extends Controller
                     ]);
                 }
 
+                $newBankBalance = $bank->account_balance - $request->amount;
+                $bank->decrement('account_balance', $request->amount);
+
                 BankTransaction::create([
                     'vendor_transaction_id' => $vendorTransaction->id,
                     'bank_id' => $bank->id,
                     'amount' => $request->amount,
-                    'balance' => $bank->account_balance,
+                    'balance' => $newBankBalance,
                     'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                     'transaction_type' => 'debit',
                 ]);
@@ -1433,17 +1370,21 @@ class VendorBillController extends Controller
                     ]);
                 }
 
+                $newCashBalance = $cash->balance - $request->amount;
+                $cash->decrement('balance', $request->amount);
+
                 CashTransaction::create([
                     'vendor_transaction_id' => $vendorTransaction->id,
                     'cash_id' => $cash->id,
                     'amount' => $request->amount,
-                    'balance' => $cash->balance,
+                    'balance' => $newCashBalance,
                     'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                     'transaction_type' => 'debit',
                 ]);
             }
 
-            // NO BALANCE UPDATE HERE - Only after approval
+            // DO NOT UPDATE VENDOR BALANCE HERE - Only on approval
+            // $vendor->decrement('balance', $request->amount); // REMOVED
 
             if ($request->hasFile('receipt_images')) {
                 $images = $request->file('receipt_images');
@@ -1463,8 +1404,9 @@ class VendorBillController extends Controller
                 'amount' => $request->amount,
                 'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                 'type' => 'transaction',
-                'approval_status' => 'pending',
+                'status' => 1,
                 'vendor_transaction_id' => $vendorTransaction->id,
+                'approval_status' => 'pending',
             ]);
 
             DB::commit();
@@ -1478,7 +1420,7 @@ class VendorBillController extends Controller
             DB::rollBack();
             return response()->json([
                 'status' => false,
-                'message' => 'Failed to create payment: ' . $th->getMessage(),
+                'message' => 'Internal server error: ' . $th->getMessage(),
             ]);
         }
     }
@@ -1504,7 +1446,6 @@ class VendorBillController extends Controller
             DB::beginTransaction();
 
             $vendor = Vendor::where('uuid', $request->vendor_id)->firstOrFail();
-            $newVendorBalance = $vendor->balance - $request->amount;
 
             $vendorTransaction = VendorTransaction::create([
                 'uuid' => (string) Str::uuid(),
@@ -1514,9 +1455,9 @@ class VendorBillController extends Controller
                 'description' => $request->description ?? 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                 'type' => 'payment',
                 'transaction_type' => 'debit',
-                'approval_status' => 'pending',
-                'current_balance' => $vendor->balance,
+                'current_balance' => $vendor->balance, // Balance NOT updated yet
                 'vendor_id' => $vendor->id,
+                'approval_status' => 'pending', // PENDING - does NOT affect balance
             ]);
 
             if ($request->send_via == 'bank') {
@@ -1526,11 +1467,14 @@ class VendorBillController extends Controller
                     throw new \Exception('Insufficient Bank Balance.');
                 }
 
+                $newBankBalance = $bank->account_balance - $request->amount;
+                $bank->decrement('account_balance', $request->amount);
+
                 BankTransaction::create([
                     'vendor_transaction_id' => $vendorTransaction->id,
                     'bank_id' => $bank->id,
                     'amount' => $request->amount,
-                    'balance' => $bank->account_balance,
+                    'balance' => $newBankBalance,
                     'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                     'transaction_type' => 'debit',
                 ]);
@@ -1541,17 +1485,21 @@ class VendorBillController extends Controller
                     throw new \Exception('Insufficient Cash Balance.');
                 }
 
+                $newCashBalance = $cash->balance - $request->amount;
+                $cash->decrement('balance', $request->amount);
+
                 CashTransaction::create([
                     'vendor_transaction_id' => $vendorTransaction->id,
                     'cash_id' => $cash->id,
                     'amount' => $request->amount,
-                    'balance' => $cash->balance,
+                    'balance' => $newCashBalance,
                     'description' => 'Payment to ' . $vendor->company_name . ' (Pending Approval)',
                     'transaction_type' => 'debit',
                 ]);
             }
 
-            // NO BALANCE UPDATE HERE
+            // DO NOT UPDATE VENDOR BALANCE HERE - Only on approval
+            // $vendor->decrement('balance', $request->amount); // REMOVED
 
             if ($request->hasFile('receipt_images')) {
                 foreach ($request->file('receipt_images') as $image) {
@@ -1570,8 +1518,9 @@ class VendorBillController extends Controller
                 'amount' => $request->amount,
                 'description' => 'Payment to ' . $vendor->company_name . ' (' . ucfirst($request->send_via) . ') (Pending Approval)',
                 'type' => 'transaction',
-                'approval_status' => 'pending',
+                'status' => 1,
                 'vendor_transaction_id' => $vendorTransaction->id,
+                'approval_status' => 'pending',
             ]);
 
             DB::commit();
