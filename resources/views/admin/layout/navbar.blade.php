@@ -25,7 +25,7 @@
                     </span>
                 </div>
                 <small class="stat-label text-muted text-uppercase fw-bold">Cash Amount</small>
-                <h6 class="mb-0 text-success fw-bold">PKR {{ $cash ? $cash->getBalance() : '0' }}</h6>
+                <h6 class="mb-0 text-success fw-bold">PKR {{ $cash ? number_format($cash->balance, 0) : '0' }}</h6>
             </div>
 
             <div class="nav-stat-card d-flex flex-column align-items-center text-center flex-grow-1 border-end">
