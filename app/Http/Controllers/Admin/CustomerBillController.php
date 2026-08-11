@@ -417,15 +417,16 @@ class CustomerBillController extends Controller
     public function store(Request $request)
     {
         try {
-            DB::beginTransaction();
-            
             // Log incoming request data for debugging
-            Log::info('Store Invoice Request Data:', $request->all());
+            Log::info('=== STORE INVOICE REQUEST ===');
+            Log::info('Request Data:', $request->all());
             
             // Validate request
-            $request->validate([
+            $validated = $request->validate([
                 'customer_id' => 'nullable|exists:customers,id',
                 'bill_date' => 'required|date',
+                'payment_terms' => 'nullable|string|max:255',
+                'type' => 'nullable|string|max:255',
                 'products' => 'required|array|min:1',
                 'products.*.product_id' => 'required|exists:products,id',
                 'products.*.quantity' => 'required|numeric|min:1',
@@ -434,7 +435,14 @@ class CustomerBillController extends Controller
                 'products.*.net_weight' => 'nullable|numeric|min:0',
                 'products.*.rate_per_40kg' => 'nullable|numeric|min:0',
                 'products.*.total' => 'required|numeric|min:0',
+                'extra_charges' => 'nullable|array',
+                'extra_charges.*.name' => 'nullable|string|max:255',
+                'extra_charges.*.amount' => 'nullable|numeric|min:0',
             ]);
+            
+            Log::info('Validation passed. Validated data:', $validated);
+            
+            DB::beginTransaction();
             
             // Calculate totals
             $totalAmount = 0;
@@ -449,19 +457,20 @@ class CustomerBillController extends Controller
             $bill->status = 'pending';
             $bill->approval_status = 'pending';
             $bill->grand_total = 0;
+            $bill->total_amount = 0;
             $bill->profit = 0;
             $bill->paid_amount = 0;
-            $bill->uuid = (string) Str::uuid();
             $bill->save();
             
             Log::info('Bill Created in customer_bills:', [
                 'bill_id' => $bill->id, 
-                'uuid' => $bill->uuid,
-                'grand_total' => $bill->grand_total
+                'uuid' => $bill->uuid
             ]);
             
             // Save products to customer_bill_products table
             foreach ($request->products as $index => $productData) {
+                Log::info('Processing product ' . $index . ':', $productData);
+                
                 $product = Product::findOrFail($productData['product_id']);
                 $quantity = (float) ($productData['quantity'] ?? 0);
                 $totalWeight = (float) ($productData['total_weight'] ?? 0);
@@ -469,15 +478,9 @@ class CustomerBillController extends Controller
                 $netWeight = (float) ($productData['net_weight'] ?? ($totalWeight - $bardanaWeight));
                 $ratePer40kg = (float) ($productData['rate_per_40kg'] ?? 0);
                 $lineTotal = (float) ($productData['total'] ?? 0);
-                $price = (float) ($productData['price'] ?? $product->price ?? 0);
-                
-                // Calculate rate per 40kg if not provided
-                if ($ratePer40kg == 0 && $lineTotal > 0 && $quantity > 0) {
-                    $ratePer40kg = ($lineTotal / $quantity);
-                }
                 
                 // Create record in customer_bill_products table
-                $billProduct = CustomerBillProduct::create([
+                $billProductData = [
                     'uuid' => (string) Str::uuid(),
                     'customer_bill_id' => $bill->id,
                     'product_id' => $product->id,
@@ -487,18 +490,22 @@ class CustomerBillController extends Controller
                     'total_weight' => $totalWeight,
                     'bardana_weight' => $bardanaWeight,
                     'net_weight' => $netWeight,
-                    'price' => $price,
+                    'price' => $product->sale_price ?? 0,
                     'rate_per_40kg' => $ratePer40kg,
                     'total' => $lineTotal,
-                ]);
+                ];
+                
+                Log::info('Attempting to save to customer_bill_products:', $billProductData);
+                
+                $billProduct = CustomerBillProduct::create($billProductData);
                 
                 Log::info('Product Saved to customer_bill_products:', [
+                    'id' => $billProduct->id,
                     'customer_bill_id' => $bill->id,
                     'product_id' => $product->id,
                     'product_name' => $product->name,
                     'quantity' => $quantity,
-                    'total' => $lineTotal,
-                    'bill_product_id' => $billProduct->id
+                    'total' => $lineTotal
                 ]);
                 
                 $profit += $lineTotal;
@@ -518,7 +525,7 @@ class CustomerBillController extends Controller
                         ]);
                         $extraChargesTotal += (float) $chargeData['amount'];
                         
-                        Log::info('Extra Charge Saved to customer_bill_extra_charges:', [
+                        Log::info('Extra Charge Saved:', [
                             'customer_bill_id' => $bill->id,
                             'name' => $chargeData['name'],
                             'amount' => $chargeData['amount']
@@ -527,17 +534,20 @@ class CustomerBillController extends Controller
                 }
             }
             
-            // Calculate final total (subtotal + extra charges)
-            $finalTotal = $totalAmount + $extraChargesTotal;
+            // Calculate final total (subtotal - extra charges)
+            $finalTotal = max(0, $totalAmount - $extraChargesTotal);
             
             // Update bill with totals in customer_bills table
             $bill->update([
                 'grand_total' => $finalTotal,
+                'total_amount' => $finalTotal,
                 'profit' => $profit,
             ]);
             
-            Log::info('Bill Updated in customer_bills:', [
+            Log::info('Bill Updated with totals:', [
                 'bill_id' => $bill->id,
+                'total_amount' => $totalAmount,
+                'extra_charges' => $extraChargesTotal,
                 'grand_total' => $finalTotal,
                 'profit' => $profit
             ]);
@@ -558,7 +568,7 @@ class CustomerBillController extends Controller
                         'customer_bill_id' => $bill->id,
                     ]);
                     
-                    Log::info('Transaction Created in customer_transactions:', [
+                    Log::info('Transaction Created:', [
                         'transaction_id' => $transaction->id,
                         'customer_bill_id' => $bill->id,
                         'amount' => $finalTotal
@@ -566,13 +576,16 @@ class CustomerBillController extends Controller
                 }
             }
             
+            // Verify products were saved
+            $productCount = CustomerBillProduct::where('customer_bill_id', $bill->id)->count();
+            Log::info('Total products saved for bill #' . $bill->id . ': ' . $productCount);
+            
             DB::commit();
             
-            Log::info('Invoice Created Successfully:', [
+            Log::info('Invoice Created Successfully!', [
                 'bill_id' => $bill->id,
                 'products_count' => count($request->products),
-                'grand_total' => $finalTotal,
-                'products_table' => 'customer_bill_products'
+                'grand_total' => $finalTotal
             ]);
             
             // Redirect to the show page with the bill UUID
@@ -583,8 +596,8 @@ class CustomerBillController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Store Invoice Error: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             Log::error('Request Data: ' . json_encode($request->all()));
-            Log::error('Trace: ' . $e->getTraceAsString());
             
             return redirect()
                 ->back()
@@ -620,22 +633,6 @@ class CustomerBillController extends Controller
                 'grand_total' => $bill->grand_total
             ]);
             
-            // Log product details for debugging
-            if ($bill->billProducts->count() > 0) {
-                foreach ($bill->billProducts as $product) {
-                    Log::info('Product in bill from customer_bill_products:', [
-                        'bill_product_id' => $product->id,
-                        'customer_bill_id' => $product->customer_bill_id,
-                        'product_id' => $product->product_id,
-                        'product_name' => $product->product->name ?? 'Unknown',
-                        'quantity' => $product->quantity,
-                        'total' => $product->total
-                    ]);
-                }
-            } else {
-                Log::warning('No products found in customer_bill_products for bill #' . $bill->id);
-            }
-            
             return view('admin.pages.customers.bills.new_show', compact('bill'));
             
         } catch (\Exception $e) {
@@ -643,6 +640,33 @@ class CustomerBillController extends Controller
             return redirect()
                 ->route('bills.list')
                 ->with('error', 'Bill not found or error loading data: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show edit form for new sales bill
+     */
+    public function newsaleedit(string $uuid)
+    {
+        try {
+            $bill = CustomerBill::with([
+                'billProducts', 
+                'billProducts.product', 
+                'extraCharges'
+            ])
+            ->where('uuid', $uuid)
+            ->firstOrFail();
+            
+            $customers = Customer::all();
+            $products = Product::where('stock', '>', 0)->get();
+            
+            return view('admin.pages.customers.bills.new_edit', compact('bill', 'customers', 'products'));
+            
+        } catch (\Exception $e) {
+            Log::error('Error editing bill: ' . $e->getMessage());
+            return redirect()
+                ->route('bills.list')
+                ->with('error', 'Bill not found: ' . $e->getMessage());
         }
     }
 
@@ -738,12 +762,13 @@ class CustomerBillController extends Controller
             }
 
             // Calculate final total
-            $finalTotal = $totalAmount + $extraChargesTotal;
+            $finalTotal = max(0, $totalAmount - $extraChargesTotal);
 
             // Update bill total in customer_bills table
             $bill->update([
                 'grand_total' => $finalTotal,
-                'profit' => $profit
+                'total_amount' => $finalTotal,
+                'profit' => $profit,
             ]);
 
             DB::commit();
@@ -760,27 +785,19 @@ class CustomerBillController extends Controller
 
     /**
      * Show invoice details (Main view)
-     * Data is fetched from: customer_bills, customer_bill_products, products, customer_bill_extra_charges, customer_transactions
      */
     public function show(string $uuid)
     {
         try {
             $bill = CustomerBill::with([
                 'customer', 
-                'billProducts',      // This loads from customer_bill_products table
-                'billProducts.product', // This loads the product details from products table
-                'extraCharges',      // This loads from customer_bill_extra_charges table
-                'transactions'       // This loads from customer_transactions table
+                'billProducts', 
+                'billProducts.product',
+                'extraCharges', 
+                'transactions'
             ])
             ->where('uuid', $uuid)
             ->firstOrFail();
-            
-            // Debug: Check if products exist in customer_bill_products
-            if ($bill->billProducts->count() > 0) {
-                Log::info('Products found in customer_bill_products for bill #' . $bill->id . ': ' . $bill->billProducts->count());
-            } else {
-                Log::warning('No products found in customer_bill_products for bill #' . $bill->id);
-            }
             
             return view('admin.pages.customers.bills.show', compact('bill'));
             

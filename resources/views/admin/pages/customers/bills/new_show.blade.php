@@ -30,58 +30,6 @@
                 </div>
             </div>
             <div class="card-body">
-                <!-- 🔍 DEBUG INFORMATION - Remove after bug is resolved -->
-                <div class="alert alert-info mb-4">
-                    <h5><i class="bx bx-bug me-1"></i> Debug Information</h5>
-                    <div class="row">
-                        <div class="col-md-4">
-                            <strong>Bill ID:</strong> {{ $bill->id }}<br>
-                            <strong>Bill UUID:</strong> {{ $bill->uuid }}<br>
-                            <strong>Bill Date:</strong> {{ $bill->bill_date }}<br>
-                            <strong>Total Amount:</strong> {{ $bill->total_amount }}
-                        </div>
-                        <div class="col-md-4">
-                            <strong>Products Count:</strong> {{ $bill->billProducts->count() }}<br>
-                            <strong>Extra Charges Count:</strong> {{ $bill->extraCharges->count() }}<br>
-                            <strong>Transactions Count:</strong> {{ $bill->transactions->count() }}<br>
-                            <strong>Customer:</strong> {{ $bill->customer ? $bill->customer->name : 'No Customer' }}
-                        </div>
-                        <div class="col-md-4">
-                            <strong>Approval Status:</strong> 
-                            <span class="badge bg-{{ $bill->approval_status == 'approved' ? 'success' : 'warning' }}">
-                                {{ ucfirst($bill->approval_status ?? 'Pending') }}
-                            </span><br>
-                            <strong>Bill Type:</strong> {{ $bill->type ?? 'N/A' }}<br>
-                            <strong>Payment Terms:</strong> {{ $bill->payment_terms ?? 'N/A' }}
-                        </div>
-                    </div>
-                    
-                    <!-- Database Query Debug -->
-                    @if($bill->billProducts->count() == 0)
-                        <div class="mt-2">
-                            <strong style="color: red;">⚠️ No products found! Check if products were saved correctly.</strong>
-                            <br>
-                            <small>Run this query in your database:</small>
-                            <pre class="bg-light p-2 mt-1" style="font-size: 12px;">
-SELECT * FROM customer_bill_products WHERE customer_bill_id = {{ $bill->id }};
-                            </pre>
-                        </div>
-                    @endif
-                    
-                    @if($bill->extraCharges->count() == 0)
-                        <div class="mt-2">
-                            <strong style="color: orange;">⚠️ No extra charges found.</strong>
-                        </div>
-                    @endif
-                    
-                    @if($bill->transactions->count() == 0)
-                        <div class="mt-2">
-                            <strong style="color: orange;">⚠️ No transactions found.</strong>
-                        </div>
-                    @endif
-                </div>
-                <!-- End Debug Information -->
-
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <h6 class="mb-3">Customer Information</h6>
@@ -110,6 +58,7 @@ SELECT * FROM customer_bill_products WHERE customer_bill_id = {{ $bill->id }};
                         @if(isset($bill->paid_amount) && $bill->paid_amount > 0)
                             <p class="mb-1"><strong>Paid Amount:</strong> PKR {{ number_format($bill->paid_amount, 2) }}</p>
                         @endif
+                        <p class="mb-1"><strong>Payment Terms:</strong> {{ $bill->payment_terms ?? 'N/A' }}</p>
                     </div>
                 </div>
 
@@ -134,7 +83,11 @@ SELECT * FROM customer_bill_products WHERE customer_bill_id = {{ $bill->id }};
                                 </tr>
                             </thead>
                             <tbody>
+                                @php $subtotal = 0; @endphp
                                 @foreach ($bill->billProducts as $index => $billProduct)
+                                    @php 
+                                        $subtotal += $billProduct->total ?? 0; 
+                                    @endphp
                                     <tr>
                                         <td>{{ $index + 1 }}</td>
                                         <td>{{ $billProduct->product->name ?? 'Product Deleted' }}</td>
@@ -152,7 +105,23 @@ SELECT * FROM customer_bill_products WHERE customer_bill_id = {{ $bill->id }};
                             <tfoot>
                                 <tr class="table-active">
                                     <th colspan="9" class="text-end">Subtotal:</th>
-                                    <th>PKR {{ number_format($bill->billProducts->sum('total'), 2) }}</th>
+                                    <th>PKR {{ number_format($subtotal, 2) }}</th>
+                                </tr>
+                                @if($bill->extraCharges->count() > 0)
+                                    @foreach ($bill->extraCharges as $charge)
+                                        <tr>
+                                            <th colspan="9" class="text-end">{{ $charge->name }}:</th>
+                                            <th>+ PKR {{ number_format($charge->amount, 2) }}</th>
+                                        </tr>
+                                    @endforeach
+                                    <tr class="table-active">
+                                        <th colspan="9" class="text-end">Extra Charges Total:</th>
+                                        <th>PKR {{ number_format($bill->extraCharges->sum('amount'), 2) }}</th>
+                                    </tr>
+                                @endif
+                                <tr class="table-success">
+                                    <th colspan="9" class="text-end"><strong>Grand Total:</strong></th>
+                                    <th><strong>PKR {{ number_format($bill->grand_total ?? $subtotal, 2) }}</strong></th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -165,75 +134,49 @@ SELECT * FROM customer_bill_products WHERE customer_bill_id = {{ $bill->id }};
                     @endif
                 </div>
 
-                <div class="row">
-                    <div class="col-md-6">
-                        @if ($bill->customer)
-                            <h6 class="mb-3">Transaction Information 
+                @if ($bill->customer && $bill->transactions->isNotEmpty())
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="mb-3">Transaction History 
                                 <span class="badge bg-info">{{ $bill->transactions->count() }}</span>
                             </h6>
-                            @if ($bill->transactions && $bill->transactions->isNotEmpty())
-                                @foreach ($bill->transactions as $transaction)
-                                    <div class="border-bottom mb-2 pb-2">
-                                        <p class="mb-1"><strong>Transaction Date:</strong>
-                                            {{ $transaction->transaction_date ? date('d-m-Y', strtotime($transaction->transaction_date)) : 'N/A' }}</p>
-                                        <p class="mb-1"><strong>Amount:</strong>
-                                            PKR {{ number_format($transaction->amount ?? 0, 2) }}</p>
-                                        <p class="mb-1"><strong>Type:</strong>
-                                            <span class="badge bg-{{ $transaction->type == 'payment' ? 'success' : 'info' }}">
-                                                {{ ucfirst($transaction->type ?? 'N/A') }}
-                                            </span>
-                                        </p>
-                                        <p class="mb-1"><strong>Current Balance:</strong>
-                                            PKR {{ number_format($transaction->current_balance ?? 0, 2) }}</p>
-                                        <p class="mb-1"><strong>Description:</strong>
-                                            {{ $transaction->description ?? 'N/A' }}</p>
-                                        <p class="mb-1"><strong>Status:</strong>
-                                            <span class="badge bg-{{ $transaction->approval_status == 'approved' ? 'success' : 'warning' }}">
-                                                {{ ucfirst($transaction->approval_status ?? 'Pending') }}
-                                            </span>
-                                        </p>
-                                    </div>
-                                @endforeach
-                            @else
-                                <p class="text-muted">No transactions found for this bill.</p>
-                            @endif
-                        @endif
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Amount</th>
+                                            <th>Type</th>
+                                            <th>Balance</th>
+                                            <th>Status</th>
+                                            <th>Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($bill->transactions as $transaction)
+                                            <tr>
+                                                <td>{{ $transaction->transaction_date ? date('d-m-Y', strtotime($transaction->transaction_date)) : 'N/A' }}</td>
+                                                <td>PKR {{ number_format($transaction->amount ?? 0, 2) }}</td>
+                                                <td>
+                                                    <span class="badge bg-{{ $transaction->type == 'payment' ? 'success' : 'info' }}">
+                                                        {{ ucfirst($transaction->type ?? 'N/A') }}
+                                                    </span>
+                                                </td>
+                                                <td>PKR {{ number_format($transaction->current_balance ?? 0, 2) }}</td>
+                                                <td>
+                                                    <span class="badge bg-{{ $transaction->approval_status == 'approved' ? 'success' : 'warning' }}">
+                                                        {{ ucfirst($transaction->approval_status ?? 'Pending') }}
+                                                    </span>
+                                                </td>
+                                                <td>{{ $transaction->description ?? 'N/A' }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-md-6 text-md-end">
-                        <h6 class="mb-3">Bill Summary</h6>
-                        <?php 
-                            $subtotal = $bill->billProducts->sum('total');
-                            $extraChargesTotal = $bill->extraCharges->sum('amount');
-                            $total = $subtotal + $extraChargesTotal;
-                        ?>
-                        <p class="mb-1"><strong>Subtotal:</strong>
-                            PKR {{ number_format($subtotal, 2) }}</p>
-                        
-                        @if($bill->extraCharges->isNotEmpty())
-                            @foreach ($bill->extraCharges as $charge)
-                                <p class="mb-1"><strong>{{ $charge->name }}:</strong>
-                                    + PKR {{ number_format($charge->amount, 2) }}</p>
-                            @endforeach
-                            <p class="mb-1"><strong>Extra Charges Total:</strong>
-                                PKR {{ number_format($extraChargesTotal, 2) }}</p>
-                        @else
-                            <p class="mb-1 text-muted"><em>No extra charges</em></p>
-                        @endif
-                        
-                        <hr>
-                        <p class="mb-1"><strong>Total Amount:</strong> 
-                            <strong>PKR {{ number_format($bill->total_amount ?? $total, 2) }}</strong>
-                        </p>
-                        
-                        @if(isset($bill->paid_amount) && $bill->paid_amount > 0)
-                            <p class="mb-1"><strong>Paid Amount:</strong>
-                                PKR {{ number_format($bill->paid_amount, 2) }}</p>
-                            <p class="mb-1"><strong>Balance Due:</strong>
-                                <strong>PKR {{ number_format(($bill->total_amount ?? $total) - $bill->paid_amount, 2) }}</strong>
-                            </p>
-                        @endif
-                    </div>
-                </div>
+                @endif
             </div>
         </div>
     </div>

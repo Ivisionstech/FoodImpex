@@ -85,7 +85,6 @@
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
-                       
                     </div>
 
                     <hr class="my-4">
@@ -164,8 +163,6 @@
                         </div>
                     </div>
 
-                    <input type="hidden" name="grand_total" id="grand-total-raw" value="0">
-
                     <!-- Form Actions -->
                     <div class="row mt-4 pt-3">
                         <div class="col-12 d-flex justify-content-end gap-2">
@@ -208,8 +205,8 @@
                             </div>
 
                             <div class="col-md-1">
-                                <label class="form-label small fw-semibold">Qty</label>
-                                <input type="number" class="form-control form-control-sm quantity-input" name="products[INDEX][quantity]" min="1" value="1" />
+                                <label class="form-label small fw-semibold">Qty <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control form-control-sm quantity-input" name="products[INDEX][quantity]" min="1" value="1" required />
                             </div>
 
                             <div class="col-md-1">
@@ -244,7 +241,7 @@
 
                             <div class="col-md-2">
                                 <label class="form-label small fw-semibold">Total Amount</label>
-                                <input type="hidden" class="total-raw" name="products[INDEX][total_raw]" />
+                                <input type="hidden" class="total-raw" name="products[INDEX][total]" />
                                 <input type="text" class="form-control form-control-sm total-display bg-light" readonly placeholder="0.00" />
                             </div>
 
@@ -270,7 +267,7 @@
                         <input type="text" class="form-control form-control-sm" name="extra_charges[INDEX][name]" placeholder="e.g., Shipping, Discount" required />
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-semibold">Amount (PKR)</label>
+                        <label class="form-label small fw-semibold">Amount (PKR) <span class="text-danger">*</span></label>
                         <input type="number" step="0.01" class="form-control form-control-sm extra-amount-input" name="extra_charges[INDEX][amount]" placeholder="0.00" required />
                     </div>
                     <div class="col-md-2">
@@ -315,6 +312,7 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function() {
+            // Initialize Select2 for customer dropdown
             $('#customer_id').select2({
                 placeholder: "Choose a customer",
                 allowClear: true,
@@ -337,7 +335,7 @@
             function updateLineTotal(productRow) {
                 const netWeight = parseFloat(productRow.find('.net-weight-input').val()) || 0;
                 const rate = parseFloat(productRow.find('.rate-40-input').val()) || 0;
-                const lineTotal = (netWeight * rate) / 40;
+                const lineTotal = netWeight > 0 && rate > 0 ? (netWeight * rate) / 40 : 0;
                 productRow.find('.total-raw').val(lineTotal.toFixed(2));
                 productRow.find('.total-display').val(lineTotal.toFixed(2));
                 return lineTotal;
@@ -363,7 +361,6 @@
                 $('#subtotal-display').text('PKR ' + subtotal.toFixed(2));
                 $('#extra-charges-total-display').text('PKR ' + extraTotal.toFixed(2));
                 $('#grand-total-display').text('PKR ' + grandTotal.toFixed(2));
-                $('#grand-total-raw').val(grandTotal.toFixed(2));
                 
                 $('#items-count').text($('.product-row').length + ' Item' + ($('.product-row').length !== 1 ? 's' : ''));
                 $('#charges-count').text($('.extra-charge-row').length + ' Charge' + ($('.extra-charge-row').length !== 1 ? 's' : ''));
@@ -374,6 +371,7 @@
                 const template = $('#product-row-template').html();
                 const row = $(template.replace(/INDEX/g, productIndex));
                 
+                // Initialize Select2 for product dropdown
                 row.find('.product-select').select2({
                     placeholder: 'Select product',
                     allowClear: true,
@@ -387,23 +385,28 @@
                     if (stock) {
                         row.find('.quantity-input').attr('max', stock);
                     }
+                    calculateTotals();
                 });
                 
+                // Net weight calculation
                 row.find('.total-weight-input, .bardana-weight-input').on('input', function() {
                     updateNetWeight(row);
                     updateLineTotal(row);
                     calculateTotals();
                 });
                 
+                // Rate calculation
                 row.find('.rate-40-input').on('input', function() {
                     updateLineTotal(row);
                     calculateTotals();
                 });
                 
+                // Quantity change
                 row.find('.quantity-input').on('input', function() {
                     calculateTotals();
                 });
                 
+                // Remove product
                 row.find('.remove-product').on('click', function() {
                     row.remove();
                     calculateTotals();
@@ -436,8 +439,49 @@
             // Initialize with one product row
             addProductRow();
             
+            // Event listeners for add buttons
             $('#add-product').on('click', addProductRow);
             $('#add-extra-charge').on('click', addExtraCharge);
+
+            // Form validation before submit
+            $('#billForm').on('submit', function(e) {
+                // Check if at least one product is added
+                if ($('.product-row').length === 0) {
+                    e.preventDefault();
+                    alert('Please add at least one product to the invoice.');
+                    return false;
+                }
+
+                // Check if customer is selected
+                if (!$('#customer_id').val()) {
+                    e.preventDefault();
+                    alert('Please select a customer.');
+                    $('#customer_id').focus();
+                    return false;
+                }
+
+                // Check if any product has a total amount > 0
+                let hasValidProduct = false;
+                $('.product-row').each(function() {
+                    const total = parseFloat($(this).find('.total-raw').val()) || 0;
+                    if (total > 0) {
+                        hasValidProduct = true;
+                    }
+                });
+
+                if (!hasValidProduct) {
+                    e.preventDefault();
+                    alert('Please ensure at least one product has a valid amount.');
+                    return false;
+                }
+
+                // Log form data for debugging
+                console.log('Form submitted with', $('.product-row').length, 'products');
+                console.log('Grand total:', $('#grand-total-display').text());
+                
+                // Show loading state
+                $('#submitBtn').prop('disabled', true).html('<i class="bx bx-loader-alt bx-spin me-1"></i> Processing...');
+            });
         });
     </script>
 @endpush
