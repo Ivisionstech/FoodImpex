@@ -10,14 +10,13 @@ class Daybook extends Model
     use HasFactory;
 
     protected $fillable = [
+         'uuid',
         'transaction_date',
+        'expense_date',
         'amount',
+        'in_hand',
         'status',
         'type',
-        'credit_type',
-        'credit_id',
-        'debit_type',
-        'debit_id',
         'approval_status',
         'description',
         'reference',

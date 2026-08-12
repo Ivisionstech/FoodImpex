@@ -7,14 +7,15 @@ use App\Models\Daybook;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class DaybookController extends Controller
 {
-    public function list()
+    public function list(Request $request)
     {
         try {
-            $from_date = request('from_date');
-            $to_date = request('to_date');
+            $from_date = $request->from_date;
+            $to_date = $request->to_date;
             $query = Daybook::query();
 
             if ($from_date && $to_date) {
@@ -25,10 +26,11 @@ class DaybookController extends Controller
                 $query->where('transaction_date', '<=', $to_date);
             }
 
-            $daybooks = $query->orderBy('id', 'asc')->paginate(40);
+            $daybooks = $query->orderBy('id', 'desc')->paginate(10);
             return view('admin.pages.daybooks.list', compact('daybooks', 'from_date', 'to_date'));
         } catch (\Throwable $th) {
-            return redirect()->back()->with('error', 'Something went wrong');
+            \Log::error('Daybook list error: ' . $th->getMessage());
+            return redirect()->back()->with('error', 'Something went wrong: ' . $th->getMessage());
         }
     }
 
@@ -41,28 +43,93 @@ class DaybookController extends Controller
     {
         try {
             DB::beginTransaction();
+            
             $type = $request->status;
             $user = User::first();
             $in_hand = $user->in_hand;
+            
             if ($type == 1) {
                 $in_hand = $in_hand - $request->amount;
             } else {
                 $in_hand = $in_hand + $request->amount;
             }
-            Daybook::create([
-                'expense_date' => $request->expense_date,
+            
+            $daybook = Daybook::create([
+                'uuid' => (string) Str::uuid(),
+                'transaction_date' => $request->expense_date ?? now(),
                 'amount' => $request->amount,
                 'in_hand' => $in_hand,
                 'description' => $request->description,
                 'status' => $request->status,
+                'type' => 'transaction',
+                'approval_status' => 'approved',
             ]);
-            $user->update([ 'in_hand' => $in_hand]);
+            
+            $user->update(['in_hand' => $in_hand]);
+            
             DB::commit();
-            return response()->json(['status' => true, 'message' => 'Daybook created successfully']);
+            
+            return response()->json([
+                'status' => true, 
+                'message' => 'Daybook entry created successfully'
+            ]);
         } catch (\Throwable $th) {
-            // dd($th->getMessage());
             DB::rollBack();
-            return response()->json(['status' => false, 'message' => 'Something went wrong']);
+            \Log::error('Daybook store error: ' . $th->getMessage());
+            return response()->json([
+                'status' => false, 
+                'message' => 'Something went wrong: ' . $th->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Display the specified daybook entry
+     */
+    public function view($uuid)
+    {
+        try {
+            $daybook = Daybook::where('uuid', $uuid)->firstOrFail();
+            return view('admin.pages.daybooks.view', compact('daybook'));
+        } catch (\Throwable $th) {
+            \Log::error('Daybook view error: ' . $th->getMessage());
+            return redirect()->route('daybooks.list')
+                ->with('error', 'Daybook entry not found');
+        }
+    }
+
+    /**
+     * Delete a daybook entry
+     */
+    public function delete($uuid)
+    {
+        try {
+            DB::beginTransaction();
+            
+            $daybook = Daybook::where('uuid', $uuid)->firstOrFail();
+            
+            // Reverse the in_hand balance
+            $user = User::first();
+            if ($daybook->status == 1) {
+                // If it was a debit, add back the amount
+                $user->in_hand = $user->in_hand + $daybook->amount;
+            } else {
+                // If it was a credit, subtract the amount
+                $user->in_hand = $user->in_hand - $daybook->amount;
+            }
+            $user->save();
+            
+            $daybook->delete();
+            
+            DB::commit();
+            
+            return redirect()->route('daybooks.list')
+                ->with('success', 'Daybook entry deleted successfully');
+        } catch (\Throwable $th) {
+            DB::rollBack();
+            \Log::error('Daybook delete error: ' . $th->getMessage());
+            return redirect()->route('daybooks.list')
+                ->with('error', 'Failed to delete entry: ' . $th->getMessage());
         }
     }
 }

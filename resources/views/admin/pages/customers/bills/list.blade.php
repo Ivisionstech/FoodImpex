@@ -76,10 +76,13 @@
                 <h5 class="mb-0">
                     <i class="bx bx-receipt me-2 text-primary"></i>
                     Customer Invoices
+                    <span class="badge bg-primary ms-2">{{ $bills->total() }}</span>
                 </h5>
+                <div class="text-muted small">
+                    Showing {{ $bills->firstItem() }} to {{ $bills->lastItem() }} of {{ $bills->total() }} invoices
+                </div>
             </div>
 
-            {{-- CSS Grid Layout for Invoices --}}
             <div class="p-3">
                 {{-- Header Row --}}
                 <div class="invoice-grid header-row d-none d-md-grid mb-2 pb-2 border-bottom">
@@ -118,7 +121,7 @@
                         
                         <div>
                             <div class="d-md-none fw-bold text-muted small">Total Amount</div>
-                            <span class="fw-bold text-primary">PKR {{ number_format($bill->total_amount, 2) }}</span>
+                            <span class="fw-bold text-primary">PKR {{ number_format($bill->total_amount ?? $bill->grand_total ?? 0, 2) }}</span>
                         </div>
                         
                         <div>
@@ -219,8 +222,19 @@
 
             <div class="card-footer bg-transparent">
                 @if(method_exists($bills, 'links'))
-                    <div class="d-flex justify-content-center">
-                        {{ $bills->appends(request()->input())->links('pagination::bootstrap-5') }}
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="text-muted small mb-0">Per Page:</label>
+                            <select id="perPageSelect" class="form-select form-select-sm" style="width: 70px;">
+                                <option value="10" {{ $bills->perPage() == 10 ? 'selected' : '' }}>10</option>
+                                <option value="25" {{ $bills->perPage() == 25 ? 'selected' : '' }}>25</option>
+                                <option value="50" {{ $bills->perPage() == 50 ? 'selected' : '' }}>50</option>
+                                <option value="100" {{ $bills->perPage() == 100 ? 'selected' : '' }}>100</option>
+                            </select>
+                        </div>
+                        <div>
+                            {{ $bills->appends(request()->input())->links('pagination::bootstrap-5') }}
+                        </div>
                     </div>
                 @endif
             </div>
@@ -235,7 +249,7 @@
     /* CSS Grid Layout */
     .invoice-grid {
         display: grid;
-        grid-template-columns: 140px 80px 1fr 160px 180px 100px;
+        grid-template-columns: 140px 100px 1fr 160px 180px 100px;
         gap: 16px;
         align-items: center;
         width: 100%;
@@ -256,7 +270,7 @@
     
     @media (max-width: 1200px) {
         .invoice-grid {
-            grid-template-columns: 130px 70px 1fr 140px 160px 80px;
+            grid-template-columns: 130px 80px 1fr 140px 160px 80px;
             gap: 12px;
         }
     }
@@ -312,6 +326,7 @@
     
     .pagination {
         gap: 5px;
+        margin-bottom: 0;
     }
     
     .pagination .page-item .page-link {
@@ -320,16 +335,24 @@
         border: none;
         padding: 8px 14px;
         transition: all 0.2s ease;
+        background: transparent;
     }
     
     .pagination .page-item.active .page-link {
         background-color: #696cff;
         color: white;
+        box-shadow: 0 2px 8px rgba(105, 108, 255, 0.3);
     }
     
     .pagination .page-item .page-link:hover {
         transform: translateY(-2px);
         background-color: rgba(105, 108, 255, 0.1);
+    }
+    
+    #perPageSelect {
+        cursor: pointer;
+        border-radius: 8px;
+        border-color: #e9ecef;
     }
     
     .btn-primary {
@@ -349,11 +372,23 @@
         transform: scale(1.02);
         filter: brightness(0.95);
     }
+    
+    .badge {
+        font-weight: 500;
+    }
 </style>
 
 <script>
 $(document).ready(function() {
     var isAdmin = '{{ auth()->user()->role }}' == 'admin';
+    
+    // Per page select
+    $('#perPageSelect').on('change', function() {
+        var perPage = $(this).val();
+        var currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set('per_page', perPage);
+        window.location.href = currentUrl.toString();
+    });
     
     if (isAdmin) {
         function approveBill(uuid, id) {
@@ -373,11 +408,18 @@ $(document).ready(function() {
                         url: '{{ url("/customers/bills/approve") }}/' + uuid,
                         type: 'POST',
                         data: { _token: '{{ csrf_token() }}' },
-                        success: function() { 
-                            Swal.fire({ title: 'Approved!', icon: 'success', timer: 1500, showConfirmButton: false }).then(() => location.reload()); 
+                        success: function(response) { 
+                            Swal.fire({ 
+                                title: 'Approved!', 
+                                text: response.message || 'Invoice approved successfully.',
+                                icon: 'success', 
+                                timer: 1500, 
+                                showConfirmButton: false 
+                            }).then(() => location.reload()); 
                         },
-                        error: function() { 
-                            Swal.fire({ title: 'Error!', text: 'Something went wrong', icon: 'error' }); 
+                        error: function(xhr) { 
+                            let msg = xhr.responseJSON?.message || 'Something went wrong';
+                            Swal.fire({ title: 'Error!', text: msg, icon: 'error' }); 
                         }
                     });
                 }
@@ -401,11 +443,18 @@ $(document).ready(function() {
                         url: '{{ url("/customers/bills/delete") }}/' + uuid,
                         type: 'DELETE',
                         data: { _token: '{{ csrf_token() }}' },
-                        success: function() { 
-                            Swal.fire({ title: 'Rejected!', icon: 'success', timer: 1500, showConfirmButton: false }).then(() => location.reload()); 
+                        success: function(response) { 
+                            Swal.fire({ 
+                                title: 'Rejected!', 
+                                text: response.message || 'Invoice deleted successfully.',
+                                icon: 'success', 
+                                timer: 1500, 
+                                showConfirmButton: false 
+                            }).then(() => location.reload()); 
                         },
-                        error: function() { 
-                            Swal.fire({ title: 'Error!', text: 'Something went wrong', icon: 'error' }); 
+                        error: function(xhr) { 
+                            let msg = xhr.responseJSON?.message || 'Something went wrong';
+                            Swal.fire({ title: 'Error!', text: msg, icon: 'error' }); 
                         }
                     });
                 }
