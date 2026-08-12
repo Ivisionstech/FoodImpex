@@ -334,25 +334,39 @@
                                             </button>
                                             <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 py-2" style="z-index: 1060; min-width: 200px; border-radius: 12px;">
                                                 <li>
-                                                    <a class="dropdown-item py-2 px-3" href="{{ route('daybooks.view', $daybook->uuid) }}">
-                                                        <i class="bx bx-show-alt me-2 text-info" style="font-size: 18px;"></i>
-                                                        <span>View Details</span>
-                                                    </a>
+                                                    @if($daybook->uuid)
+                                                        <a class="dropdown-item py-2 px-3" href="{{ route('daybooks.view', $daybook->uuid) }}">
+                                                            <i class="bx bx-show-alt me-2 text-info" style="font-size: 18px;"></i>
+                                                            <span>View Details</span>
+                                                        </a>
+                                                    @else
+                                                        <span class="dropdown-item py-2 px-3 text-muted">
+                                                            <i class="bx bx-show-alt me-2 text-muted" style="font-size: 18px;"></i>
+                                                            <span>No UUID (Cannot View)</span>
+                                                        </span>
+                                                    @endif
                                                 </li>
                                                 @if(auth()->user()->role == 'admin')
                                                     <li>
                                                         <hr class="dropdown-divider">
                                                     </li>
                                                     <li>
-                                                        <form action="{{ route('daybooks.delete', $daybook->uuid) }}" method="POST" 
-                                                              onsubmit="return confirm('Are you sure you want to delete this entry?')">
-                                                            @csrf
-                                                            @method('POST')
-                                                            <button type="submit" class="dropdown-item py-2 px-3 text-danger">
-                                                                <i class="bx bx-trash me-2" style="font-size: 18px;"></i>
-                                                                <span>Delete Entry</span>
-                                                            </button>
-                                                        </form>
+                                                        @if($daybook->uuid)
+                                                            <form action="{{ route('daybooks.delete', $daybook->uuid) }}" method="POST" 
+                                                                  onsubmit="return confirm('Are you sure you want to delete this entry?')">
+                                                                @csrf
+                                                                @method('POST')
+                                                                <button type="submit" class="dropdown-item py-2 px-3 text-danger">
+                                                                    <i class="bx bx-trash me-2" style="font-size: 18px;"></i>
+                                                                    <span>Delete Entry</span>
+                                                                </button>
+                                                            </form>
+                                                        @else
+                                                            <span class="dropdown-item py-2 px-3 text-muted">
+                                                                <i class="bx bx-trash me-2 text-muted" style="font-size: 18px;"></i>
+                                                                <span>Cannot Delete (No UUID)</span>
+                                                            </span>
+                                                        @endif
                                                     </li>
                                                 @endif
                                             </ul>

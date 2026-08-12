@@ -54,8 +54,11 @@ class DaybookController extends Controller
                 $in_hand = $in_hand + $request->amount;
             }
             
+            // Generate UUID if not provided
+            $uuid = (string) Str::uuid();
+            
             $daybook = Daybook::create([
-                'uuid' => (string) Str::uuid(),
+                'uuid' => $uuid,
                 'transaction_date' => $request->expense_date ?? now(),
                 'amount' => $request->amount,
                 'in_hand' => $in_hand,
@@ -89,7 +92,9 @@ class DaybookController extends Controller
     public function view($uuid)
     {
         try {
-            $daybook = Daybook::where('uuid', $uuid)->firstOrFail();
+            $daybook = Daybook::with(['customerTransaction.customer', 'vendorTransaction.vendor', 'expense'])
+                ->where('uuid', $uuid)
+                ->firstOrFail();
             return view('admin.pages.daybooks.view', compact('daybook'));
         } catch (\Throwable $th) {
             \Log::error('Daybook view error: ' . $th->getMessage());
