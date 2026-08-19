@@ -40,7 +40,6 @@
                                                     href="{{ route('vendors.view', $vendor->uuid) }}">View</a></li>
                                             <li><a class="dropdown-item"
                                                     href="{{ route('vendors.edit', $vendor->uuid) }}">Edit</a></li>
-
                                             <li> <a class="dropdown-item action-confirm1"
                                                     data-url="{{ route('vendors.delete', $vendor->uuid) }}"
                                                     data-text="You want to delete this vendor!"
@@ -48,7 +47,14 @@
                                             <li><a class="dropdown-item"
                                                     href="{{ route('vendors.bills.create', $vendor->uuid) }}">Add
                                                     Bill</a></li>
-                                        
+                                            {{-- NEW: Download Ledger Button --}}
+                                            <li>
+                                                <a class="dropdown-item" 
+                                                    href="{{ route('vendors.bank-statement', ['uuid' => $vendor->uuid]) }}" 
+                                                    target="_blank">
+                                                    <i class="bx bx-download me-1"></i> Download Ledger
+                                                </a>
+                                            </li>
                                         </ul>
                                     </div>
                                 </td>
