@@ -18,15 +18,15 @@
         .badge-balance { background-color: #17a2b8; color: white; }
         .badge-return { background-color: #dc3545; color: white; }
         .badge-general { background-color: #6c757d; color: white; }
-        .badge-dr { background-color: #dc3545; color: white; }
-        .badge-cr { background-color: #28a745; color: white; }
+        .badge-dr { background-color: #28a745; color: white; }
+        .badge-cr { background-color: #dc3545; color: white; }
         .badge-pending { background-color: #ffc107; color: #333; }
         .badge-approved { background-color: #28a745; color: white; }
         .badge-batch { background-color: #6f42c1; color: white; }
-        .text-dr { color: #dc3545 !important; font-weight: bold; }
-        .text-cr { color: #28a745 !important; font-weight: bold; }
-        .balance-dr { color: #dc3545 !important; font-weight: bold; }
-        .balance-cr { color: #28a745 !important; font-weight: bold; }
+        .text-dr { color: #28a745 !important; font-weight: bold; }
+        .text-cr { color: #dc3545 !important; font-weight: bold; }
+        .balance-dr { color: #28a745 !important; font-weight: bold; }
+        .balance-cr { color: #dc3545 !important; font-weight: bold; }
         
         /* Batch Entry Styles */
         .batch-entry-row {
@@ -79,6 +79,15 @@
         }
         .modal-body .detail-value {
             font-weight: 500;
+        }
+
+        .btn-outline-purple {
+            border-color: #6f42c1;
+            color: #6f42c1;
+        }
+        .btn-outline-purple:hover {
+            background-color: #6f42c1;
+            color: white;
         }
     </style>
     
@@ -166,8 +175,9 @@
                                         ->first();
                                     
                                     $balance = $lastTransaction ? floatval($lastTransaction->current_balance ?? 0) : 0;
-                                    $balanceClass = $balance >= 0 ? 'bg-label-danger' : 'bg-label-success';
-                                    $balanceLabel = $balance >= 0 ? 'DR' : 'CR';
+                                    // FIXED: Negative = DR, Positive = CR
+                                    $balanceClass = $balance < 0 ? 'bg-label-danger' : 'bg-label-success';
+                                    $balanceLabel = $balance < 0 ? 'DR' : 'CR';
                                 @endphp
                                 <span class="badge {{ $balanceClass }}">
                                     PKR {{ number_format(abs($balance), 0) }} {{ $balanceLabel }}
@@ -180,10 +190,10 @@
             </div>
         </div>
 
-        <!-- Vendor Bank Statement Section -->
+        <!-- Vendor Ledger Section -->
         <div class="card mt-5">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <h5 class="mb-0">Vendor Bank Statement</h5>
+                <h5 class="mb-0">Vendor Ledger</h5>
                 <div class="d-flex gap-2 align-items-center flex-wrap">
                     <form method="GET" action="{{ route('vendors.view', $vendor->uuid) }}" class="d-flex gap-2 flex-wrap">
                         <input type="date" name="trans_from" class="form-control form-control-sm" value="{{ $trans_from }}" style="width: 150px;">
@@ -195,13 +205,11 @@
                         @endif
                     </form>
                     
-                    <!-- View Report Button - Opens PDF in Browser -->
                     <a href="{{ route('vendors.bank-statement', ['uuid' => $vendor->uuid, 'trans_from' => $trans_from, 'trans_to' => $trans_to]) }}" 
                         class="btn btn-sm btn-info" target="_blank">
-                        <i class='bx bx-show'></i> View Report
+                        <i class='bx bx-show'></i> View Ledger
                     </a>
                     
-                    <!-- Download PDF Button -->
                     <a href="{{ route('vendors.download-bank-statement', ['uuid' => $vendor->uuid, 'trans_from' => $trans_from, 'trans_to' => $trans_to]) }}" 
                         class="btn btn-sm btn-success">
                         <i class='bx bx-download'></i> Download PDF
@@ -225,7 +233,7 @@
                             @php
                                 $type = strtolower($transaction->type ?? '');
                                 
-                                // Skip bill type transactions - Don't display purchase bills in bank statement
+                                // Skip bill type transactions
                                 if ($type == 'bill') {
                                     continue;
                                 }
@@ -236,7 +244,7 @@
                                 $approvalStatus = $transaction->approval_status ?? 'pending';
                                 $isApproved = ($approvalStatus == 'approved');
                                 
-                                // Use the current_balance from database
+                                // Use the current_balance from database (this is the signed value)
                                 $currentBalance = floatval($transaction->current_balance ?? 0);
                                 
                                 $displayType = '';
@@ -257,6 +265,22 @@
                                 if ($type == 'balance') {
                                     if (stripos($description, 'Opening Balance') !== false) {
                                         $isOpeningBalance = true;
+                                        
+                                        if ($currentBalance >= 0) {
+                                            $transactionTypeDisplay = 'CR';
+                                            $amountClass = 'text-cr';
+                                            $displayType = 'Opening Balance (Credit)';
+                                            $badgeClass = 'badge-balance';
+                                            $badgeText = 'OPENING CR';
+                                            $descriptionText = 'Opening Balance - Vendor owes us';
+                                        } else {
+                                            $transactionTypeDisplay = 'DR';
+                                            $amountClass = 'text-dr';
+                                            $displayType = 'Opening Balance (Debit)';
+                                            $badgeClass = 'badge-balance';
+                                            $badgeText = 'OPENING DR';
+                                            $descriptionText = 'Opening Balance - We owe vendor';
+                                        }
                                     } else {
                                         $isGeneralEntry = true;
                                     }
@@ -283,24 +307,17 @@
                                     $statusText = 'Pending';
                                 }
                                 
-                                // DR/CR LOGIC FOR VENDOR
+                                // DR/CR LOGIC FOR OTHER TRANSACTION TYPES
                                 if ($type == 'payment') {
                                     $displayType = 'Payment Sent';
                                     $badgeClass = 'badge-payment';
                                     $badgeText = 'PAYMENT';
-                                    $amountClass = 'text-dr';
-                                    $transactionTypeDisplay = 'DR';
+                                    $amountClass = 'text-cr';
+                                    $transactionTypeDisplay = 'CR';
                                     $descriptionText = $description ?: 'Payment to vendor';
                                     if (isset($transaction->send_via) && $transaction->send_via) {
                                         $descriptionText .= ' via ' . ucfirst($transaction->send_via);
                                     }
-                                } elseif ($isOpeningBalance) {
-                                    $displayType = 'Opening Balance';
-                                    $badgeClass = 'badge-balance';
-                                    $badgeText = 'OPENING';
-                                    $amountClass = 'text-info';
-                                    $transactionTypeDisplay = $amount > 0 ? 'CR' : 'DR';
-                                    $descriptionText = 'Opening Balance';
                                 } elseif ($isGeneralEntry) {
                                     $displayType = 'General Entry';
                                     $badgeClass = $hasBatch ? 'badge-batch' : 'badge-general';
@@ -319,22 +336,22 @@
                                     $displayType = 'Return';
                                     $badgeClass = 'badge-return';
                                     $badgeText = 'RETURN';
-                                    $amountClass = 'text-dr';
-                                    $transactionTypeDisplay = 'DR';
+                                    $amountClass = 'text-cr';
+                                    $transactionTypeDisplay = 'CR';
                                     $descriptionText = $description ?: 'Product return';
                                 } elseif ($type == 'credit') {
                                     $displayType = 'Credit Entry';
                                     $badgeClass = 'badge-credit';
                                     $badgeText = 'CREDIT';
-                                    $amountClass = 'text-cr';
-                                    $transactionTypeDisplay = 'CR';
+                                    $amountClass = 'text-dr';
+                                    $transactionTypeDisplay = 'DR';
                                     $descriptionText = $description ?: 'Credit transaction';
                                 } elseif ($type == 'debit') {
                                     $displayType = 'Debit Entry';
                                     $badgeClass = 'badge-debit';
                                     $badgeText = 'DEBIT';
-                                    $amountClass = 'text-dr';
-                                    $transactionTypeDisplay = 'DR';
+                                    $amountClass = 'text-cr';
+                                    $transactionTypeDisplay = 'CR';
                                     $descriptionText = $description ?: 'Debit transaction';
                                 } else {
                                     $displayType = ucfirst($type) ?: 'Entry';
@@ -345,9 +362,12 @@
                                     $descriptionText = $description ?: $displayType;
                                 }
                                 
-                                // Current Balance DR/CR
-                                $drCrDisplay = $currentBalance >= 0 ? 'DR' : 'CR';
-                                $balanceClass = $currentBalance < 0 ? 'balance-cr' : 'balance-dr';
+                                // =============================================
+                                // CURRENT BALANCE COLUMN - FIXED
+                                // Negative = DR, Positive = CR
+                                // =============================================
+                                $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
+                                $balanceClass = $currentBalance < 0 ? 'balance-dr' : 'balance-cr';
                                 $typeBadgeClass = $transactionTypeDisplay == 'DR' ? 'badge-dr' : 'badge-cr';
                                 
                                 // Row class for batch entries
@@ -370,7 +390,7 @@
                                         <button type="button" class="btn btn-sm btn-outline-purple btn-sm ms-1" 
                                                 data-bs-toggle="collapse" 
                                                 data-bs-target="#batchDetails{{ $transaction->id }}"
-                                                style="padding: 0 6px; font-size: 10px; border-color: #6f42c1; color: #6f42c1;">
+                                                style="padding: 0 6px; font-size: 10px;">
                                             <i class='bx bx-chevron-down'></i> View All
                                         </button>
                                     @endif
@@ -486,9 +506,17 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <span class="badge {{ $typeBadgeClass }}">{{ $transactionTypeDisplay }}</span>
+                                    @if($isOpeningBalance)
+                                        <span class="badge {{ $transactionTypeDisplay == 'DR' ? 'badge-dr' : 'badge-cr' }}">
+                                            {{ $transactionTypeDisplay }}
+                                        </span>
+                                    @else
+                                        <span class="badge {{ $typeBadgeClass }}">{{ $transactionTypeDisplay }}</span>
+                                    @endif
                                 </td>
                                 <td>
+                                    <!-- CURRENT BALANCE COLUMN - FIXED -->
+                                    <!-- Negative = DR, Positive = CR -->
                                     <span class="fw-bold {{ $balanceClass }}">
                                         PKR {{ number_format(abs($currentBalance), 0) }}
                                         <small>{{ $drCrDisplay }}</small>
@@ -627,9 +655,9 @@
                 if (modalType) {
                     modalType.textContent = entryType;
                     if (entryType === 'DR') {
-                        modalType.className = 'badge bg-danger';
-                    } else if (entryType === 'CR') {
                         modalType.className = 'badge bg-success';
+                    } else if (entryType === 'CR') {
+                        modalType.className = 'badge bg-danger';
                     } else {
                         modalType.className = 'badge bg-secondary';
                     }
