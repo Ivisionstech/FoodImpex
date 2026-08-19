@@ -14,7 +14,6 @@
             background-color: #fff;
         }
 
-        /* Hide buttons when printing */
         @media print {
             .no-print {
                 display: none !important;
@@ -174,7 +173,6 @@
         .badge-approved { background-color: #28a745; color: white; }
         .badge-batch { background-color: #6f42c1; color: white; }
 
-        /* Batch Entries Styles */
         .batch-entries-row {
             background-color: #f8f0ff !important;
             border-left: 3px solid #6f42c1 !important;
@@ -184,10 +182,6 @@
             background-color: #f8f0ff !important;
             padding: 4px 5px !important;
             font-size: 10px !important;
-        }
-
-        .batch-entries-row .batch-indent {
-            padding-left: 25px !important;
         }
 
         .batch-entries-row .batch-icon {
@@ -233,7 +227,6 @@
         .text-warning { color: #ffc107; }
         .text-purple { color: #6f42c1; }
 
-        /* Button Styles */
         .btn {
             display: inline-flex;
             align-items: center;
@@ -250,11 +243,6 @@
             transition: all 0.3s ease;
             gap: 8px;
             min-width: 100px;
-        }
-
-        .btn i, .btn .icon {
-            font-size: 18px;
-            line-height: 1;
         }
 
         .btn-print {
@@ -315,7 +303,6 @@
             min-width: 120px;
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
             .action-buttons {
                 flex-direction: column;
@@ -332,7 +319,6 @@
             }
         }
 
-        /* Balance DR/CR Badge */
         .balance-dr {
             color: #dc3545 !important;
             font-weight: bold;
@@ -342,7 +328,6 @@
             font-weight: bold;
         }
         
-        /* DR = Red, CR = Green */
         .text-dr { color: #dc3545 !important; font-weight: bold; }
         .text-cr { color: #28a745 !important; font-weight: bold; }
         .badge-dr { background-color: #dc3545; color: white; }
@@ -352,7 +337,6 @@
 
 <body>
     @php
-        // LOGO DYNAMIC HANDLING
         $logoSrc = "";
         $logoPath = public_path('images/logo.png');
 
@@ -370,7 +354,6 @@
         
         $netBalance = ($totalCredits ?? 0) - ($totalDebits ?? 0);
         
-        // Calculate approved and pending counts
         $approvedCount = 0;
         $pendingCount = 0;
         foreach ($vendorTransactions as $transaction) {
@@ -381,7 +364,6 @@
             }
         }
         
-        // Filter info
         $filterInfo = '';
         if (isset($trans_from) && isset($trans_to) && $trans_from && $trans_to) {
             $filterInfo = 'Period: ' . \Carbon\Carbon::parse($trans_from)->format('d-m-Y') . ' to ' . \Carbon\Carbon::parse($trans_to)->format('d-m-Y');
@@ -391,7 +373,6 @@
             $filterInfo = 'To: ' . \Carbon\Carbon::parse($trans_to)->format('d-m-Y');
         }
         
-        // Build back URL with filters
         $backUrl = route('vendors.view', ['uuid' => $vendor->uuid]);
         $params = [];
         if (isset($trans_from) && $trans_from) $params['trans_from'] = $trans_from;
@@ -400,7 +381,6 @@
             $backUrl .= '?' . http_build_query($params);
         }
         
-        // Build download URL with filters
         $downloadUrl = route('vendors.download-bank-statement', ['uuid' => $vendor->uuid]);
         if (!empty($params)) {
             $downloadUrl .= '?' . http_build_query(array_merge($params, ['action' => 'download']));
@@ -409,7 +389,6 @@
         }
     @endphp
 
-    <!-- Action Buttons - Hidden when printing -->
     <div class="action-buttons no-print">
         <div class="left-group">
             <a href="{{ $backUrl }}" class="btn btn-back">
@@ -451,7 +430,6 @@
         @endif
         <div style="font-size: 13px; margin-top: 8px; font-weight: bold;">
             Current Balance: 
-            {{-- Negative = DR, Positive = CR --}}
             <span style="color: {{ ($vendor->balance ?? 0) < 0 ? '#dc3545' : '#28a745' }}">
                 PKR {{ number_format(abs($vendor->balance ?? 0), 2) }} {{ ($vendor->balance ?? 0) < 0 ? 'DR' : 'CR' }}
             </span>
@@ -485,7 +463,7 @@
                     $isApproved = ($approvalStatus == 'approved');
                     
                     // =============================================
-                    // CURRENT BALANCE = current_balance from database
+                    // USE DATABASE current_balance (same as view page)
                     // =============================================
                     $currentBalance = floatval($transaction->current_balance ?? 0);
                     
@@ -533,11 +511,9 @@
                     }
                     
                     // =============================================
-                    // FIXED: DR/CR LOGIC FOR VENDOR
-                    // Use transaction_type from database for opening balance
+                    // DR/CR LOGIC FOR VENDOR
                     // =============================================
                     if ($type == 'payment') {
-                        // Payment = Money OUT = DEBIT
                         $debitAmount = $amount;
                         $displayType = 'Payment Sent';
                         $badgeClass = 'badge-payment';
@@ -548,9 +524,7 @@
                             $descriptionText .= ' via ' . ucfirst($transaction->send_via);
                         }
                     } elseif ($isOpeningBalance) {
-                        // =============================================
-                        // FIXED: Opening Balance - Use transaction_type
-                        // =============================================
+                        // Opening Balance - Use transaction_type
                         if ($transactionType == 'credit') {
                             $creditAmount = $amount;
                             $drCrType = 'CR';
@@ -630,6 +604,7 @@
                     
                     // =============================================
                     // CURRENT BALANCE - Negative = DR, Positive = CR
+                    // Using database current_balance (same as view)
                     // =============================================
                     $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
                     $balanceClass = $currentBalance < 0 ? 'balance-dr' : 'balance-cr';
@@ -642,7 +617,6 @@
                     $transactionDate = $transaction->date ?? $transaction->created_at ?? now();
                 @endphp
                 
-                <!-- Main Transaction Row -->
                 <tr class="{{ $hasBatch ? 'batch-entries-row' : '' }}">
                     <td style="text-align: center;">{{ $index + 1 }}</td>
                     <td style="text-align: center;">
@@ -671,7 +645,6 @@
                             <span style="font-size: 8px; color: #ffc107; margin-left: 5px;">(Not affecting balance)</span>
                         @endif
                     </td>
-                    <!-- DEBIT Column - Money OUT -->
                     <td class="amount-debit">
                         @if($debitAmount > 0)
                             {{ number_format($debitAmount, 2) }}
@@ -679,7 +652,6 @@
                             —
                         @endif
                     </td>
-                    <!-- CREDIT Column - Money IN -->
                     <td class="amount-credit">
                         @if($creditAmount > 0)
                             {{ number_format($creditAmount, 2) }}
@@ -687,11 +659,9 @@
                             —
                         @endif
                     </td>
-                    <!-- DR/CR Column -->
                     <td class="dr-cr-cell {{ $drCrType == 'DR' ? 'text-danger' : 'text-success' }}">
                         {{ $drCrType }}
                     </td>
-                    <!-- BALANCE Column - Shows Vendor Account Balance -->
                     <td class="balance {{ $balanceClass }}">
                         {{ number_format(abs($currentBalance), 2) }} {{ $drCrDisplay }}
                         @if(!$isApproved)
@@ -709,7 +679,6 @@
         </tbody>
     </table>
 
-    <!-- Summary Section -->
     <div class="summary-section">
         <div class="summary-title">LEDGER SUMMARY</div>
         <div class="summary-row">
@@ -748,7 +717,6 @@
 
     <script>
         window.onload = function() {
-            // Check if URL has print parameter
             if (window.location.search.includes('print=true')) {
                 window.print();
             }

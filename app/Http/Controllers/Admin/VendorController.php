@@ -392,7 +392,14 @@ class VendorController extends Controller
                         $runningBalance -= $amount;
                     } elseif ($type == 'balance') {
                         if (stripos($description, 'Opening Balance') !== false) {
-                            $runningBalance = $amount;
+                            // For opening balance, set the running balance based on transaction_type
+                            if ($transactionType == 'credit') {
+                                $runningBalance = $amount; // Positive balance
+                            } elseif ($transactionType == 'debit') {
+                                $runningBalance = -$amount; // Negative balance
+                            } else {
+                                $runningBalance = $amount > 0 ? $amount : -$amount;
+                            }
                         } else {
                             if ($transactionType == 'credit') {
                                 $runningBalance += $amount;
@@ -540,85 +547,73 @@ class VendorController extends Controller
     /**
      * VIEW Bank Statement as PDF in Browser
      */
-    public function bankStatement($uuid)
-    {
-        try {
-            $vendor = Vendor::where('uuid', $uuid)->first();
+ /**
+ * VIEW Bank Statement as PDF in Browser
+ */
+public function bankStatement($uuid)
+{
+    try {
+        $vendor = Vendor::where('uuid', $uuid)->first();
+        
+        if (!$vendor) {
+            return redirect()->route('vendors.list')->with('error', 'Vendor not found');
+        }
+
+        $trans_from = request()->trans_from;
+        $trans_to = request()->trans_to;
+
+        $transactionsQuery = $vendor->vendorTransactions();
+        
+        if ($trans_from && $trans_to) {
+            $transactionsQuery->whereBetween('date', [$trans_from, $trans_to]);
+        } elseif ($trans_from) {
+            $transactionsQuery->where('date', '>=', $trans_from);
+        } elseif ($trans_to) {
+            $transactionsQuery->where('date', '<=', $trans_to);
+        }
+        
+        $allTransactions = $transactionsQuery->orderBy('date', 'ASC')
+            ->orderBy('id', 'ASC')
+            ->get();
+
+        // Filter out bill type transactions
+        $filteredTransactions = $allTransactions->filter(function ($transaction) {
+            $type = strtolower($transaction->type ?? '');
+            return $type != 'bill';
+        });
+
+        // Calculate running balance for display (for the balance column)
+        $runningBalance = 0;
+        $transactionsWithBalance = [];
+
+        foreach ($filteredTransactions as $transaction) {
+            $amount = floatval($transaction->amount);
+            $type = strtolower($transaction->type ?? '');
+            $approvalStatus = $transaction->approval_status ?? 'pending';
+            $description = $transaction->description ?? '';
+            $transactionType = $transaction->transaction_type ?? '';
+            $isApproved = ($approvalStatus == 'approved');
             
-            if (!$vendor) {
-                return redirect()->route('vendors.list')->with('error', 'Vendor not found');
-            }
-
-            $trans_from = request()->trans_from;
-            $trans_to = request()->trans_to;
-
-            $transactionsQuery = $vendor->vendorTransactions();
+            $transaction->original_amount = $amount;
             
-            if ($trans_from && $trans_to) {
-                $transactionsQuery->whereBetween('date', [$trans_from, $trans_to]);
-            } elseif ($trans_from) {
-                $transactionsQuery->where('date', '>=', $trans_from);
-            } elseif ($trans_to) {
-                $transactionsQuery->where('date', '<=', $trans_to);
-            }
-            
-            $allTransactions = $transactionsQuery->orderBy('date', 'ASC')
-                ->orderBy('id', 'ASC')
-                ->get();
-
-            $filteredTransactions = $allTransactions->filter(function ($transaction) {
-                $type = strtolower($transaction->type ?? '');
-                return $type != 'bill';
-            });
-
-            $runningBalance = 0;
-            $transactionsWithBalance = [];
-
-            foreach ($filteredTransactions as $transaction) {
-                $amount = floatval($transaction->amount);
-                $type = strtolower($transaction->type ?? '');
-                $approvalStatus = $transaction->approval_status ?? 'pending';
-                $description = $transaction->description ?? '';
-                $transactionType = $transaction->transaction_type ?? '';
-                $isApproved = ($approvalStatus == 'approved');
-                
-                $transaction->original_amount = $amount;
-                
-                if ($isApproved) {
-                    if ($type == 'payment') {
-                        $runningBalance -= $amount;
-                        $transaction->transaction_type_display = 'debit';
-                    } elseif ($type == 'balance') {
-                        if (stripos($description, 'Opening Balance') !== false) {
-                            $runningBalance = $amount;
-                            $transaction->transaction_type_display = $amount > 0 ? 'credit' : 'debit';
+            if ($isApproved) {
+                if ($type == 'payment') {
+                    $runningBalance -= $amount;
+                    $transaction->transaction_type_display = 'debit';
+                } elseif ($type == 'balance') {
+                    if (stripos($description, 'Opening Balance') !== false) {
+                        // For opening balance, use transaction_type to determine sign
+                        if ($transactionType == 'credit') {
+                            $runningBalance = $amount; // Positive balance
+                            $transaction->transaction_type_display = 'credit';
+                        } elseif ($transactionType == 'debit') {
+                            $runningBalance = -$amount; // Negative balance
+                            $transaction->transaction_type_display = 'debit';
                         } else {
-                            if ($transactionType == 'credit') {
-                                $runningBalance += $amount;
-                                $transaction->transaction_type_display = 'credit';
-                            } elseif ($transactionType == 'debit') {
-                                $runningBalance -= $amount;
-                                $transaction->transaction_type_display = 'debit';
-                            } else {
-                                if ($amount > 0) {
-                                    $runningBalance += $amount;
-                                    $transaction->transaction_type_display = 'credit';
-                                } else {
-                                    $runningBalance -= abs($amount);
-                                    $transaction->transaction_type_display = 'debit';
-                                }
-                            }
+                            $runningBalance = $amount > 0 ? $amount : -$amount;
+                            $transaction->transaction_type_display = $amount > 0 ? 'credit' : 'debit';
                         }
-                    } elseif ($type == 'return') {
-                        $runningBalance -= $amount;
-                        $transaction->transaction_type_display = 'debit';
-                    } elseif ($type == 'credit') {
-                        $runningBalance += $amount;
-                        $transaction->transaction_type_display = 'credit';
-                    } elseif ($type == 'debit') {
-                        $runningBalance -= $amount;
-                        $transaction->transaction_type_display = 'debit';
-                    } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
+                    } else {
                         if ($transactionType == 'credit') {
                             $runningBalance += $amount;
                             $transaction->transaction_type_display = 'credit';
@@ -635,98 +630,132 @@ class VendorController extends Controller
                             }
                         }
                     }
-                } else {
-                    if ($type == 'payment' || $type == 'return' || $type == 'debit') {
-                        $transaction->transaction_type_display = 'debit';
-                    } elseif ($type == 'credit' || $type == 'balance') {
+                } elseif ($type == 'return') {
+                    $runningBalance -= $amount;
+                    $transaction->transaction_type_display = 'debit';
+                } elseif ($type == 'credit') {
+                    $runningBalance += $amount;
+                    $transaction->transaction_type_display = 'credit';
+                } elseif ($type == 'debit') {
+                    $runningBalance -= $amount;
+                    $transaction->transaction_type_display = 'debit';
+                } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
+                    if ($transactionType == 'credit') {
+                        $runningBalance += $amount;
                         $transaction->transaction_type_display = 'credit';
-                    } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
-                        if ($transactionType == 'credit' || $amount > 0) {
+                    } elseif ($transactionType == 'debit') {
+                        $runningBalance -= $amount;
+                        $transaction->transaction_type_display = 'debit';
+                    } else {
+                        if ($amount > 0) {
+                            $runningBalance += $amount;
                             $transaction->transaction_type_display = 'credit';
                         } else {
+                            $runningBalance -= abs($amount);
                             $transaction->transaction_type_display = 'debit';
                         }
                     }
                 }
-                
-                $transaction->current_balance = $runningBalance;
-                $transaction->is_approved = $isApproved;
-                $transactionsWithBalance[] = $transaction;
-            }
-
-            $vendorTransactions = array_reverse($transactionsWithBalance);
-
-            $totalDebits = 0;
-            $totalCredits = 0;
-            
-            foreach ($transactionsWithBalance as $transaction) {
-                $amount = floatval($transaction->amount);
-                $type = strtolower($transaction->type ?? '');
-                $transactionType = $transaction->transaction_type ?? '';
-                $description = $transaction->description ?? '';
-                $isApproved = $transaction->is_approved ?? false;
-                
-                if (!$isApproved) continue;
-                
-                if ($type == 'payment') {
-                    $totalDebits += $amount;
-                } elseif ($type == 'balance') {
-                    if (stripos($description, 'Opening Balance') !== false) {
-                        if ($amount > 0) {
-                            $totalCredits += $amount;
-                        } else {
-                            $totalDebits += abs($amount);
-                        }
-                    } else {
-                        if ($transactionType == 'credit' || $amount > 0) {
-                            $totalCredits += $amount;
-                        } else {
-                            $totalDebits += abs($amount);
-                        }
-                    }
+            } else {
+                if ($type == 'payment' || $type == 'return' || $type == 'debit') {
+                    $transaction->transaction_type_display = 'debit';
+                } elseif ($type == 'credit' || $type == 'balance') {
+                    $transaction->transaction_type_display = 'credit';
                 } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
+                    if ($transactionType == 'credit' || $amount > 0) {
+                        $transaction->transaction_type_display = 'credit';
+                    } else {
+                        $transaction->transaction_type_display = 'debit';
+                    }
+                }
+            }
+            
+            // =============================================
+            // FIXED: Use the ORIGINAL current_balance from database
+            // Do NOT overwrite it with running balance
+            // =============================================
+            // Store the running balance separately for calculations if needed
+            $transaction->running_balance = $runningBalance;
+            // Keep the original current_balance from database
+            // $transaction->current_balance already has the database value
+            $transaction->is_approved = $isApproved;
+            $transactionsWithBalance[] = $transaction;
+        }
+
+        // Reverse for display (newest first)
+        $vendorTransactions = array_reverse($transactionsWithBalance);
+
+        $totalDebits = 0;
+        $totalCredits = 0;
+        
+        foreach ($transactionsWithBalance as $transaction) {
+            $amount = floatval($transaction->amount);
+            $type = strtolower($transaction->type ?? '');
+            $transactionType = $transaction->transaction_type ?? '';
+            $description = $transaction->description ?? '';
+            $isApproved = $transaction->is_approved ?? false;
+            
+            if (!$isApproved) continue;
+            
+            if ($type == 'payment') {
+                $totalDebits += $amount;
+            } elseif ($type == 'balance') {
+                if (stripos($description, 'Opening Balance') !== false) {
+                    if ($amount > 0) {
+                        $totalCredits += $amount;
+                    } else {
+                        $totalDebits += abs($amount);
+                    }
+                } else {
                     if ($transactionType == 'credit' || $amount > 0) {
                         $totalCredits += $amount;
                     } else {
                         $totalDebits += abs($amount);
                     }
-                } elseif ($type == 'credit') {
-                    $totalCredits += $amount;
-                } elseif ($type == 'debit') {
-                    $totalDebits += $amount;
-                } elseif ($type == 'return') {
-                    $totalDebits += $amount;
                 }
+            } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
+                if ($transactionType == 'credit' || $amount > 0) {
+                    $totalCredits += $amount;
+                } else {
+                    $totalDebits += abs($amount);
+                }
+            } elseif ($type == 'credit') {
+                $totalCredits += $amount;
+            } elseif ($type == 'debit') {
+                $totalDebits += $amount;
+            } elseif ($type == 'return') {
+                $totalDebits += $amount;
             }
-
-            $companySettings = null;
-            if (Schema::hasTable('companies')) {
-                $companySettings = DB::table('companies')->first();
-            }
-            
-            if (!$companySettings) {
-                $companySettings = (object)[
-                    'name' => 'Food Impex',
-                    'logo' => null,
-                    'address' => 'Main Road, Sialkot, Pakistan',
-                    'mobile' => '+92 300 0000000',
-                ];
-            }
-
-            return view('admin.pages.vendors.bank-statement-pdf', compact(
-                'vendor',
-                'vendorTransactions',
-                'companySettings',
-                'totalDebits',
-                'totalCredits',
-                'trans_from',
-                'trans_to'
-            ));
-
-        } catch (\Exception $e) {
-            \Log::error('Vendor Bank Statement Error: ' . $e->getMessage());
-            \Log::error($e->getTraceAsString());
-            return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
         }
+
+        $companySettings = null;
+        if (Schema::hasTable('companies')) {
+            $companySettings = DB::table('companies')->first();
+        }
+        
+        if (!$companySettings) {
+            $companySettings = (object)[
+                'name' => 'Food Impex',
+                'logo' => null,
+                'address' => 'Main Road, Sialkot, Pakistan',
+                'mobile' => '+92 300 0000000',
+            ];
+        }
+
+        return view('admin.pages.vendors.bank-statement-pdf', compact(
+            'vendor',
+            'vendorTransactions',
+            'companySettings',
+            'totalDebits',
+            'totalCredits',
+            'trans_from',
+            'trans_to'
+        ));
+
+    } catch (\Exception $e) {
+        \Log::error('Vendor Bank Statement Error: ' . $e->getMessage());
+        \Log::error($e->getTraceAsString());
+        return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
     }
+}
 }
