@@ -33,6 +33,10 @@
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
+            .batch-entries-row {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
         }
 
         .header {
@@ -148,6 +152,7 @@
             display: block;
             margin-top: 2px;
             border-top: 1px dotted #ccc;
+            padding-top: 2px;
         }
 
         .badge-type {
@@ -167,6 +172,29 @@
         .badge-credit { background-color: #28a745; color: white; }
         .badge-pending { background-color: #ffc107; color: #333; }
         .badge-approved { background-color: #28a745; color: white; }
+        .badge-batch { background-color: #6f42c1; color: white; }
+
+        /* Batch Entries Styles */
+        .batch-entries-row {
+            background-color: #f8f0ff !important;
+            border-left: 3px solid #6f42c1 !important;
+        }
+
+        .batch-entries-row td {
+            background-color: #f8f0ff !important;
+            padding: 4px 5px !important;
+            font-size: 10px !important;
+        }
+
+        .batch-entries-row .batch-indent {
+            padding-left: 25px !important;
+        }
+
+        .batch-entries-row .batch-icon {
+            color: #6f42c1;
+            font-size: 14px;
+            margin-right: 5px;
+        }
 
         .summary-section {
             margin-top: 20px;
@@ -203,6 +231,7 @@
         .text-success { color: #28a745; }
         .text-info { color: #17a2b8; }
         .text-warning { color: #ffc107; }
+        .text-purple { color: #6f42c1; }
 
         /* Button Styles */
         .btn {
@@ -246,6 +275,16 @@
         .btn-back:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(79, 172, 254, 0.5);
+        }
+
+        .btn-download {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: #333;
+            box-shadow: 0 4px 15px rgba(67, 233, 123, 0.4);
+        }
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(67, 233, 123, 0.5);
         }
 
         .action-buttons {
@@ -302,6 +341,12 @@
             color: #28a745 !important;
             font-weight: bold;
         }
+        
+        /* DR = Red, CR = Green */
+        .text-dr { color: #dc3545 !important; font-weight: bold; }
+        .text-cr { color: #28a745 !important; font-weight: bold; }
+        .badge-dr { background-color: #dc3545; color: white; }
+        .badge-cr { background-color: #28a745; color: white; }
     </style>
 </head>
 
@@ -354,6 +399,14 @@
         if (!empty($params)) {
             $backUrl .= '?' . http_build_query($params);
         }
+        
+        // Build download URL with filters
+        $downloadUrl = route('vendors.download-bank-statement', ['uuid' => $vendor->uuid]);
+        if (!empty($params)) {
+            $downloadUrl .= '?' . http_build_query(array_merge($params, ['action' => 'download']));
+        } else {
+            $downloadUrl .= '?action=download';
+        }
     @endphp
 
     <!-- Action Buttons - Hidden when printing -->
@@ -364,6 +417,9 @@
             </a>
         </div>
         <div class="right-group">
+            <a href="{{ $downloadUrl }}" class="btn btn-download">
+                <span class="icon">⬇</span> Download PDF
+            </a>
             <button onclick="window.print()" class="btn btn-print">
                 <span class="icon">🖨</span> Print
             </button>
@@ -383,11 +439,11 @@
     </div>
 
     <div class="statement-title">
-        ACCOUNTS STATEMENT LEDGER
+        VENDOR LEDGER
     </div>
 
     <div class="vendor-details">
-        <div class="party-name">PARTY NAME: {{ strtoupper($vendor->company_name) }}</div>
+        <div class="party-name">VENDOR NAME: {{ strtoupper($vendor->company_name) }}</div>
         <div class="address">ADDRESS: {{ strtoupper($vendor->address ?? 'N/A') }}</div>
         <div style="font-size: 12px; margin-top: 5px;">PHONE: {{ $vendor->phone ?? 'N/A' }}</div>
         @if($filterInfo)
@@ -395,8 +451,9 @@
         @endif
         <div style="font-size: 13px; margin-top: 8px; font-weight: bold;">
             Current Balance: 
-            <span style="color: {{ ($vendor->balance ?? 0) < 0 ? '#28a745' : '#dc3545' }}">
-                PKR {{ number_format(abs($vendor->balance ?? 0), 2) }} {{ ($vendor->balance ?? 0) < 0 ? 'CR' : 'DR' }}
+            {{-- Negative = DR, Positive = CR --}}
+            <span style="color: {{ ($vendor->balance ?? 0) < 0 ? '#dc3545' : '#28a745' }}">
+                PKR {{ number_format(abs($vendor->balance ?? 0), 2) }} {{ ($vendor->balance ?? 0) < 0 ? 'DR' : 'CR' }}
             </span>
             <span style="font-size: 10px; color: #666;">(Approved Only)</span>
         </div>
@@ -428,7 +485,7 @@
                     $isApproved = ($approvalStatus == 'approved');
                     
                     // =============================================
-                    // CURRENT BALANCE = current_balance from database (same as view)
+                    // CURRENT BALANCE = current_balance from database
                     // =============================================
                     $currentBalance = floatval($transaction->current_balance ?? 0);
                     
@@ -443,6 +500,9 @@
                     $isOpeningBalance = false;
                     $statusBadge = '';
                     $statusText = '';
+                    $hasBatch = false;
+                    $batchCount = 0;
+                    $batchEntries = [];
                     
                     // Determine if Opening Balance or General Entry
                     if ($type == 'balance') {
@@ -455,6 +515,14 @@
                         $isGeneralEntry = true;
                     }
                     
+                    // Check if this general entry has a batch
+                    if ($isGeneralEntry && isset($generalEntryDetails[$transaction->id])) {
+                        $hasBatch = true;
+                        $batchData = $generalEntryDetails[$transaction->id];
+                        $batchEntries = $batchData['entries'];
+                        $batchCount = $batchData['count'];
+                    }
+                    
                     // Status Badge
                     if ($isApproved) {
                         $statusBadge = 'badge-approved';
@@ -465,10 +533,11 @@
                     }
                     
                     // =============================================
-                    // DR/CR LOGIC FOR VENDOR (NO BILLS)
+                    // FIXED: DR/CR LOGIC FOR VENDOR
+                    // Use transaction_type from database for opening balance
                     // =============================================
                     if ($type == 'payment') {
-                        // Payment = DR (Money OUT)
+                        // Payment = Money OUT = DEBIT
                         $debitAmount = $amount;
                         $displayType = 'Payment Sent';
                         $badgeClass = 'badge-payment';
@@ -479,23 +548,34 @@
                             $descriptionText .= ' via ' . ucfirst($transaction->send_via);
                         }
                     } elseif ($isOpeningBalance) {
-                        // Opening Balance
-                        if ($amount > 0) {
+                        // =============================================
+                        // FIXED: Opening Balance - Use transaction_type
+                        // =============================================
+                        if ($transactionType == 'credit') {
                             $creditAmount = $amount;
                             $drCrType = 'CR';
+                            $displayType = 'Opening Balance (Credit)';
+                            $badgeClass = 'badge-balance';
+                            $badgeText = 'OPENING CR';
+                            $descriptionText = 'Opening Balance - Vendor owes us';
                         } else {
-                            $debitAmount = abs($amount);
+                            $debitAmount = $amount;
                             $drCrType = 'DR';
+                            $displayType = 'Opening Balance (Debit)';
+                            $badgeClass = 'badge-balance';
+                            $badgeText = 'OPENING DR';
+                            $descriptionText = 'Opening Balance - We owe vendor';
                         }
-                        $displayType = 'Opening Balance';
-                        $badgeClass = 'badge-balance';
-                        $badgeText = 'OPENING';
-                        $descriptionText = 'Opening Balance';
                     } elseif ($isGeneralEntry) {
-                        // General Entry
                         $displayType = 'General Entry';
-                        $badgeClass = 'badge-general';
-                        $badgeText = 'GENERAL';
+                        
+                        if ($hasBatch) {
+                            $badgeClass = 'badge-batch';
+                            $badgeText = 'BATCH (' . $batchCount . ')';
+                        } else {
+                            $badgeClass = 'badge-general';
+                            $badgeText = 'GENERAL';
+                        }
                         
                         if ($transactionType == 'credit') {
                             $creditAmount = $amount;
@@ -548,9 +628,11 @@
                         $descriptionText = $description ?: $displayType;
                     }
                     
-                    // Current Balance DR/CR (using current_balance from database)
-                    $drCrDisplay = $currentBalance >= 0 ? 'DR' : 'CR';
-                    $balanceClass = $currentBalance >= 0 ? 'balance-dr' : 'balance-cr';
+                    // =============================================
+                    // CURRENT BALANCE - Negative = DR, Positive = CR
+                    // =============================================
+                    $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
+                    $balanceClass = $currentBalance < 0 ? 'balance-dr' : 'balance-cr';
                     
                     // If pending, show warning
                     if (!$isApproved) {
@@ -559,7 +641,9 @@
                     
                     $transactionDate = $transaction->date ?? $transaction->created_at ?? now();
                 @endphp
-                <tr>
+                
+                <!-- Main Transaction Row -->
+                <tr class="{{ $hasBatch ? 'batch-entries-row' : '' }}">
                     <td style="text-align: center;">{{ $index + 1 }}</td>
                     <td style="text-align: center;">
                         {{ \Carbon\Carbon::parse($transactionDate)->format('d-m-Y') }}
@@ -570,6 +654,11 @@
                     <td>
                         <span class="badge-type {{ $badgeClass }}">{{ $badgeText }}</span>
                         <strong>{{ $displayType }}</strong>
+                        @if($hasBatch)
+                            <span style="color: #6f42c1; font-size: 10px; margin-left: 5px;">
+                                <i class="batch-icon">📦</i> Batch of {{ $batchCount }} entries
+                            </span>
+                        @endif
                         @if($descriptionText && $descriptionText != $displayType)
                             <div class="item-desc">{{ $descriptionText }}</div>
                         @endif
@@ -602,7 +691,7 @@
                     <td class="dr-cr-cell {{ $drCrType == 'DR' ? 'text-danger' : 'text-success' }}">
                         {{ $drCrType }}
                     </td>
-                    <!-- BALANCE Column - Shows Vendor Account Balance (using current_balance from database) -->
+                    <!-- BALANCE Column - Shows Vendor Account Balance -->
                     <td class="balance {{ $balanceClass }}">
                         {{ number_format(abs($currentBalance), 2) }} {{ $drCrDisplay }}
                         @if(!$isApproved)
@@ -622,7 +711,7 @@
 
     <!-- Summary Section -->
     <div class="summary-section">
-        <div class="summary-title">STATEMENT SUMMARY</div>
+        <div class="summary-title">LEDGER SUMMARY</div>
         <div class="summary-row">
             <span class="summary-label">Total Debits (Payment/Outward):</span>
             <span class="summary-value text-danger">PKR {{ number_format($totalDebits ?? 0, 2) }}</span>
@@ -652,7 +741,7 @@
     </div>
 
     <div class="footer">
-        <p>This statement contains {{ count($vendorTransactions) }} transaction(s) in chronological order.</p>
+        <p>This ledger contains {{ count($vendorTransactions) }} transaction(s) in chronological order.</p>
         <p><strong>{{ $companySettings->name ?? 'Intekhab Sanitary Fittings' }}</strong> - Generated on {{ now()->format('F j, Y \a\t g:i A') }}</p>
         <p style="font-size: 10px; color: #999;">* This is a system-generated document. No signature required. *</p>
     </div>
