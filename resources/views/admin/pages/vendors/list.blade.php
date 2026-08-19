@@ -48,9 +48,7 @@
                                             <li><a class="dropdown-item"
                                                     href="{{ route('vendors.bills.create', $vendor->uuid) }}">Add
                                                     Bill</a></li>
-                                            <li><a class="dropdown-item"
-                                                    href="{{ route('vendors.send-payment', $vendor->uuid) }}">Make
-                                                    Payment</a></li>
+                                        
                                         </ul>
                                     </div>
                                 </td>
