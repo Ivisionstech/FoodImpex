@@ -46,58 +46,78 @@ class VendorController extends Controller
         }
     }
     
-    public function store(StoreRequest $request)
-    {
-        try {
-            DB::beginTransaction();
-            $vendor = Vendor::create([
-                'uuid' => Str::uuid(),
-                'company_name' => $request->company_name,
-                'person_name' => $request->person_name,
-                'email' => $request->email,
-                'phone' => $request->phone,
-                'address' => $request->address,
-                'balance' => $request->balance,
-            ]);
-            
-            if ($request->hasFile('profile')) {
-                $profile = $request->file('profile');
-                $profileName = time() . '.' . $profile->getClientOriginalExtension();
-                $profilePath = $profile->storeAs('vendor-profiles', $profileName, 'public');
-                $vendor->profile = $profilePath;
-                $vendor->save();
-            }
-            
-            // Create opening balance transaction - Auto Approved
-            $openingBalance = $request->balance ?? 0;
-            VendorTransaction::create([
-                'uuid' => Str::uuid(),
-                'date' => $request->open_balance_date ?? now(),
-                'amount' => (string)$openingBalance,
-                'type' => 'balance',
-                'transaction_type' => $openingBalance >= 0 ? 'credit' : 'debit',
-                'current_balance' => (string)$openingBalance,
-                'vendor_id' => $vendor->id,
-                'description' => 'Opening Balance',
-                'approval_status' => 'approved',
-            ]);
-            
-            DB::commit();
-            return response()->json([
-                'status' => true,
-                'message' => 'Vendor Added Successfully',
-                'redirect' => route('vendors.list')
-            ]);
-        } catch (\Throwable $th) {
-            Log::info($th->getMessage());
-            DB::rollback();
-            return response()->json([
-                'status' => false,
-                'message' => 'Internal server error'
-            ]);
+public function store(StoreRequest $request)
+{
+    try {
+        DB::beginTransaction();
+        
+        // Log the incoming data for debugging
+        \Log::info('Vendor Store Request:', $request->all());
+        
+        $vendor = Vendor::create([
+            'uuid' => Str::uuid(),
+            'company_name' => $request->company_name,
+            'person_name' => $request->person_name,
+            'email' => $request->email,
+            'phone' => $request->phone,
+            'address' => $request->address,
+            'balance' => $request->balance ?? 0,
+        ]);
+        
+        \Log::info('Vendor Created:', ['id' => $vendor->id, 'balance' => $vendor->balance]);
+        
+        if ($request->hasFile('profile')) {
+            $profile = $request->file('profile');
+            $profileName = time() . '.' . $profile->getClientOriginalExtension();
+            $profilePath = $profile->storeAs('vendor-profiles', $profileName, 'public');
+            $vendor->profile = $profilePath;
+            $vendor->save();
         }
+        
+        // Create opening balance transaction
+        $openingBalance = floatval($request->balance ?? 0);
+        $absoluteAmount = abs($openingBalance);
+        $transactionType = $openingBalance >= 0 ? 'credit' : 'debit';
+        
+        \Log::info('Creating Opening Balance:', [
+            'amount' => $absoluteAmount,
+            'transaction_type' => $transactionType,
+            'current_balance' => $openingBalance
+        ]);
+        
+        $transaction = VendorTransaction::create([
+            'uuid' => Str::uuid(),
+            'date' => $request->open_balance_date ?? now(),
+            'amount' => (string)$absoluteAmount,
+            'type' => 'balance',
+            'transaction_type' => $transactionType,
+            'current_balance' => (string)$openingBalance,
+            'vendor_id' => $vendor->id,
+            'description' => 'Opening Balance',
+            'approval_status' => 'approved',
+        ]);
+        
+        \Log::info('VendorTransaction Created:', ['id' => $transaction->id]);
+        
+        DB::commit();
+        
+        return response()->json([
+            'status' => true,
+            'message' => 'Vendor Added Successfully',
+            'redirect' => route('vendors.list')
+        ]);
+        
+    } catch (\Throwable $th) {
+        \Log::error('Vendor Store Error: ' . $th->getMessage());
+        \Log::error('Stack trace: ' . $th->getTraceAsString());
+        DB::rollback();
+        
+        return response()->json([
+            'status' => false,
+            'message' => 'Error: ' . $th->getMessage()
+        ]);
     }
-    
+}
     public function view(Request $request, $uuid)
     {
         try {
