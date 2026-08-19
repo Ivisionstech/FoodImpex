@@ -91,13 +91,6 @@
                                     value="{{ old('balance') ?? 0 }}" 
                                     oninput="updateBalancePreview(this.value)" />
                             </div>
-                            <div class="balance-help">
-                                <small>
-                                    <span class="text-success">Positive (+) =</span> Vendor owes us (Vendor is in Credit)
-                                    <br>
-                                    <span class="text-danger">Negative (-) =</span> We owe the vendor (Vendor is in Debit)
-                                </small>
-                            </div>
                             <div id="balancePreview" class="balance-preview zero">
                                 Balance: PKR 0.00 (Zero Balance)
                             </div>
