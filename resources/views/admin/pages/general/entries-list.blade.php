@@ -30,10 +30,10 @@
 
         <!-- STATISTICS CARDS -->
         @php
-            $totalEntries = $entries->total();
-            $pendingCount = $entries->where('approval_status', 'pending')->count();
-            $approvedCount = $entries->where('approval_status', 'approved')->count();
-            $totalAmount = $entries->sum('amount');
+            $totalEntries = $paginatedEntries->total();
+            $pendingCount = $paginatedEntries->where('approval_status', 'pending')->count();
+            $approvedCount = $paginatedEntries->where('approval_status', 'approved')->count();
+            $totalAmount = $paginatedEntries->sum('amount');
         @endphp
 
         <div class="row g-4 mb-4">
@@ -186,7 +186,7 @@
                         General Entries
                     </h5>
                     <div class="text-muted small">
-                        Showing {{ $entries->firstItem() }} to {{ $entries->lastItem() }} of {{ $entries->total() }} entries
+                        Showing {{ $paginatedEntries->firstItem() }} to {{ $paginatedEntries->lastItem() }} of {{ $paginatedEntries->total() }} entries
                     </div>
                 </div>
             </div>
@@ -207,7 +207,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse ($entries as $index => $entry)
+                            @forelse ($paginatedEntries as $index => $entry)
                                 @php
                                     $isDebit = $entry->debit_type && $entry->debit_id;
                                     $isCredit = $entry->credit_type && $entry->credit_id;
@@ -215,6 +215,8 @@
                                     $isDue = strpos($entry->description ?? '', 'DUE:') !== false;
                                     $isClearedDue = strpos($entry->description ?? '', 'CLEARED:') !== false;
                                     $isAdmin = auth()->user()->role == 'admin';
+                                    $isGrouped = $entry->is_grouped ?? false;
+                                    $entryCount = $entry->entry_count ?? 1;
                                     
                                     // Determine status badges
                                     $approvalBadge = '';
@@ -253,45 +255,55 @@
                                         $amountIcon = 'bx-time';
                                     }
                                     
-                                    // Determine account name
+                                    // Determine account name for single entries
                                     $accountName = '';
                                     $accountType = '';
                                     $accountIcon = '';
-                                    if ($isDebit) {
-                                        $accountType = $entry->debit_type;
-                                        if ($accountType == 'customer') {
-                                            $customer = \App\Models\Customer::find($entry->debit_id);
-                                            $accountName = $customer ? $customer->name : 'Customer #' . $entry->debit_id;
-                                            $accountIcon = 'bx-user';
-                                        } elseif ($accountType == 'vendor') {
-                                            $vendor = \App\Models\Vendor::find($entry->debit_id);
-                                            $accountName = $vendor ? $vendor->company_name : 'Vendor #' . $entry->debit_id;
-                                            $accountIcon = 'bx-store';
-                                        } elseif ($accountType == 'bank') {
-                                            $bank = \App\Models\Bank::find($entry->debit_id);
-                                            $accountName = $bank ? $bank->name : 'Bank #' . $entry->debit_id;
-                                            $accountIcon = 'bx-bank';
-                                        } elseif ($accountType == 'cash') {
-                                            $accountName = 'Cash Account';
-                                            $accountIcon = 'bx-wallet';
-                                        }
-                                    } elseif ($isCredit) {
-                                        $accountType = $entry->credit_type;
-                                        if ($accountType == 'customer') {
-                                            $customer = \App\Models\Customer::find($entry->credit_id);
-                                            $accountName = $customer ? $customer->name : 'Customer #' . $entry->credit_id;
-                                            $accountIcon = 'bx-user';
-                                        } elseif ($accountType == 'vendor') {
-                                            $vendor = \App\Models\Vendor::find($entry->credit_id);
-                                            $accountName = $vendor ? $vendor->company_name : 'Vendor #' . $entry->credit_id;
-                                            $accountIcon = 'bx-store';
-                                        } elseif ($accountType == 'bank') {
-                                            $bank = \App\Models\Bank::find($entry->credit_id);
-                                            $accountName = $bank ? $bank->name : 'Bank #' . $entry->credit_id;
-                                            $accountIcon = 'bx-bank';
-                                        } elseif ($accountType == 'cash') {
-                                            $accountName = 'Cash Account';
-                                            $accountIcon = 'bx-wallet';
+                                    if (!$isGrouped) {
+                                        if ($isDebit) {
+                                            $accountType = $entry->debit_type;
+                                            if ($accountType == 'customer') {
+                                                $customer = \App\Models\Customer::find($entry->debit_id);
+                                                $accountName = $customer ? $customer->name : 'Customer #' . $entry->debit_id;
+                                                $accountIcon = 'bx-user';
+                                            } elseif ($accountType == 'vendor') {
+                                                $vendor = \App\Models\Vendor::find($entry->debit_id);
+                                                $accountName = $vendor ? $vendor->company_name : 'Vendor #' . $entry->debit_id;
+                                                $accountIcon = 'bx-store';
+                                            } elseif ($accountType == 'bank') {
+                                                $bank = \App\Models\Bank::find($entry->debit_id);
+                                                $accountName = $bank ? $bank->name : 'Bank #' . $entry->debit_id;
+                                                $accountIcon = 'bx-bank';
+                                            } elseif ($accountType == 'cash') {
+                                                $accountName = 'Cash Account';
+                                                $accountIcon = 'bx-wallet';
+                                            } elseif ($accountType == 'expense') {
+                                                $expense = \App\Models\Expense::find($entry->debit_id);
+                                                $accountName = $expense ? $expense->name : 'Expense #' . $entry->debit_id;
+                                                $accountIcon = 'bx-purchase-tag';
+                                            }
+                                        } elseif ($isCredit) {
+                                            $accountType = $entry->credit_type;
+                                            if ($accountType == 'customer') {
+                                                $customer = \App\Models\Customer::find($entry->credit_id);
+                                                $accountName = $customer ? $customer->name : 'Customer #' . $entry->credit_id;
+                                                $accountIcon = 'bx-user';
+                                            } elseif ($accountType == 'vendor') {
+                                                $vendor = \App\Models\Vendor::find($entry->credit_id);
+                                                $accountName = $vendor ? $vendor->company_name : 'Vendor #' . $entry->credit_id;
+                                                $accountIcon = 'bx-store';
+                                            } elseif ($accountType == 'bank') {
+                                                $bank = \App\Models\Bank::find($entry->credit_id);
+                                                $accountName = $bank ? $bank->name : 'Bank #' . $entry->credit_id;
+                                                $accountIcon = 'bx-bank';
+                                            } elseif ($accountType == 'cash') {
+                                                $accountName = 'Cash Account';
+                                                $accountIcon = 'bx-wallet';
+                                            } elseif ($accountType == 'expense') {
+                                                $expense = \App\Models\Expense::find($entry->credit_id);
+                                                $accountName = $expense ? $expense->name : 'Expense #' . $entry->credit_id;
+                                                $accountIcon = 'bx-purchase-tag';
+                                            }
                                         }
                                     }
                                     
@@ -299,7 +311,7 @@
                                 @endphp
                                 <tr class="{{ $rowClass }}">
                                     <td>
-                                        <span class="fw-semibold text-muted">{{ $entries->firstItem() + $index }}</span>
+                                        <span class="fw-semibold text-muted">{{ $paginatedEntries->firstItem() + $index }}</span>
                                     </td>
                                     <td>
                                         <div class="fw-semibold">{{ \Carbon\Carbon::parse($entry->transaction_date)->format('d-M-Y') }}</div>
@@ -307,8 +319,13 @@
                                     </td>
                                     <td>
                                         <div class="fw-semibold" title="{{ $entry->description }}">
-                                            {{ \Str::limit($entry->description ?? 'N/A', 35) }}
+                                            {{ \Str::limit($entry->description ?? 'N/A', 50) }}
                                         </div>
+                                        @if($isGrouped)
+                                            <span class="badge bg-primary bg-opacity-10 text-primary mt-1">
+                                                <i class="bx bx-layer me-1"></i> {{ $entryCount }} entries in batch
+                                            </span>
+                                        @endif
                                         @if($isDue && $entry->approval_status == 'pending')
                                             <span class="badge bg-danger bg-opacity-10 text-danger mt-1">
                                                 <i class="bx bx-info-circle me-1"></i> Due - Needs Payment
@@ -321,13 +338,23 @@
                                         @endif
                                     </td>
                                     <td>
-                                        <div class="d-flex align-items-center gap-2">
-                                            <i class="bx {{ $accountIcon }} fs-5 text-primary"></i>
-                                            <div>
-                                                <div class="fw-semibold small text-capitalize">{{ $accountType }}</div>
-                                                <div class="small text-muted">{{ \Str::limit($accountName, 20) }}</div>
+                                        @if($isGrouped)
+                                            <div class="d-flex align-items-center gap-2">
+                                                <i class="bx bx-layer fs-5 text-primary"></i>
+                                                <div>
+                                                    <div class="fw-semibold small">Multiple Accounts</div>
+                                                    <div class="small text-muted">{{ $entryCount }} entries</div>
+                                                </div>
                                             </div>
-                                        </div>
+                                        @else
+                                            <div class="d-flex align-items-center gap-2">
+                                                <i class="bx {{ $accountIcon }} fs-5 text-primary"></i>
+                                                <div>
+                                                    <div class="fw-semibold small text-capitalize">{{ $accountType }}</div>
+                                                    <div class="small text-muted">{{ \Str::limit($accountName, 20) }}</div>
+                                                </div>
+                                            </div>
+                                        @endif
                                     </td>
                                     <td>
                                         <span class="badge bg-{{ $approvalClass }} bg-opacity-10 text-{{ $approvalClass }} px-3 py-2 rounded-pill">
@@ -352,7 +379,7 @@
                                                 <i class="bx bx-dots-vertical-rounded fs-5"></i>
                                             </button>
                                             <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 py-2" style="z-index: 1060; min-width: 200px; border-radius: 12px;">
-                                                <!-- View Option - Navigates to view page -->
+                                                <!-- View Option -->
                                                 <li>
                                                     <a class="dropdown-item py-2 px-3" href="{{ route('general-transactions.get-entry', $entry->id) }}">
                                                         <i class="bx bx-show-alt me-2 text-info" style="font-size: 18px;"></i>
@@ -360,7 +387,7 @@
                                                     </a>
                                                 </li>
                                                 
-                                                <!-- Edit Option - Always Visible for all entries -->
+                                                <!-- Edit Option -->
                                                 <li>
                                                     <a class="dropdown-item py-2 px-3" href="{{ route('general-transactions.edit', $entry->id) }}">
                                                         <i class="bx bx-edit-alt me-2 text-warning" style="font-size: 18px;"></i>
@@ -416,24 +443,24 @@
                 </div>
 
                 <!-- Pagination -->
-                @if($entries->total() > 0)
+                @if($paginatedEntries->total() > 0)
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 p-3 border-top">
                         <div class="d-flex align-items-center gap-3">
                             <div class="text-muted small">
-                                Showing {{ $entries->firstItem() }} to {{ $entries->lastItem() }} of {{ $entries->total() }} entries
+                                Showing {{ $paginatedEntries->firstItem() }} to {{ $paginatedEntries->lastItem() }} of {{ $paginatedEntries->total() }} entries
                             </div>
                             <div class="d-flex align-items-center gap-2">
                                 <label class="text-muted small mb-0">Per Page:</label>
                                 <select id="perPageSelect" class="form-select form-select-sm" style="width: 70px;">
-                                    <option value="10" {{ $entries->perPage() == 10 ? 'selected' : '' }}>10</option>
-                                    <option value="25" {{ $entries->perPage() == 25 ? 'selected' : '' }}>25</option>
-                                    <option value="50" {{ $entries->perPage() == 50 ? 'selected' : '' }}>50</option>
-                                    <option value="100" {{ $entries->perPage() == 100 ? 'selected' : '' }}>100</option>
+                                    <option value="10" {{ $paginatedEntries->perPage() == 10 ? 'selected' : '' }}>10</option>
+                                    <option value="25" {{ $paginatedEntries->perPage() == 25 ? 'selected' : '' }}>25</option>
+                                    <option value="50" {{ $paginatedEntries->perPage() == 50 ? 'selected' : '' }}>50</option>
+                                    <option value="100" {{ $paginatedEntries->perPage() == 100 ? 'selected' : '' }}>100</option>
                                 </select>
                             </div>
                         </div>
                         <div>
-                            {{ $entries->appends(request()->input())->links('pagination::bootstrap-5') }}
+                            {{ $paginatedEntries->appends(request()->input())->links('pagination::bootstrap-5') }}
                         </div>
                     </div>
                 @endif
