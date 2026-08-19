@@ -15,13 +15,148 @@ use App\Models\VendorTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class GeneralTransactionController extends Controller
 {
     public function index()
     {
-        $entries = Daybook::where('type', 'transaction')->orderBy('id', 'desc')->paginate(10);
-        return view('admin.pages.general.entries-list', compact('entries'));
+        // Get all entries ordered by latest first
+        $allEntries = Daybook::where('type', 'transaction')
+            ->orderBy('id', 'desc')
+            ->get();
+        
+        // Group by batch_id or use individual ID for old entries
+        $groupedEntries = $allEntries->groupBy(function($item) {
+            return $item->batch_id ?? 'single_' . $item->id;
+        })->map(function($group, $key) {
+            if (str_starts_with($key, 'single_')) {
+                // Old entry without batch_id - show as single
+                $entry = $group->first();
+                return (object) [
+                    'id' => $entry->id,
+                    'batch_id' => $key,
+                    'transaction_date' => $entry->transaction_date,
+                    'description' => $entry->description,
+                    'debit_type' => $entry->debit_type,
+                    'debit_id' => $entry->debit_id,
+                    'credit_type' => $entry->credit_type,
+                    'credit_id' => $entry->credit_id,
+                    'amount' => $entry->amount,
+                    'approval_status' => $entry->approval_status,
+                    'status' => $entry->status,
+                    'type' => $entry->type,
+                    'entry_count' => 1,
+                    'is_grouped' => false,
+                    'created_at' => $entry->created_at,
+                    'updated_at' => $entry->updated_at,
+                    'customer_transaction_id' => $entry->customer_transaction_id ?? null,
+                    'vendor_transaction_id' => $entry->vendor_transaction_id ?? null,
+                ];
+            } else {
+                // Grouped entries with batch_id
+                $first = $group->first();
+                $totalAmount = $group->sum('amount');
+                
+                // Collect all account names for description
+                $accountNames = [];
+                foreach ($group as $item) {
+                    $accountName = $this->getAccountName($item);
+                    if ($accountName) {
+                        $accountNames[] = $accountName;
+                    }
+                }
+                
+                // Build description with entry count and account names
+                $description = $group->count() . ' entries';
+                if (count($accountNames) > 0) {
+                    $description .= ' - ' . implode(', ', array_slice($accountNames, 0, 3));
+                    if (count($accountNames) > 3) {
+                        $description .= ' +' . (count($accountNames) - 3) . ' more';
+                    }
+                }
+                
+                // Determine approval status (pending if any entry is pending)
+                $approvalStatus = $group->contains('approval_status', 'pending') ? 'pending' : 'approved';
+                
+                return (object) [
+                    'id' => $first->id,
+                    'batch_id' => $key,
+                    'transaction_date' => $first->transaction_date,
+                    'description' => $description,
+                    'debit_type' => $first->debit_type,
+                    'debit_id' => $first->debit_id,
+                    'credit_type' => $first->credit_type,
+                    'credit_id' => $first->credit_id,
+                    'amount' => $totalAmount,
+                    'approval_status' => $approvalStatus,
+                    'status' => $first->status,
+                    'type' => $first->type,
+                    'entry_count' => $group->count(),
+                    'is_grouped' => true,
+                    'created_at' => $first->created_at,
+                    'updated_at' => $first->updated_at,
+                    'customer_transaction_id' => $first->customer_transaction_id ?? null,
+                    'vendor_transaction_id' => $first->vendor_transaction_id ?? null,
+                ];
+            }
+        })->values();
+        
+        // Paginate the grouped entries
+        $perPage = request('per_page', 10);
+        $currentPage = request('page', 1);
+        $paginatedEntries = new LengthAwarePaginator(
+            $groupedEntries->forPage($currentPage, $perPage),
+            $groupedEntries->count(),
+            $perPage,
+            $currentPage,
+            ['path' => request()->url(), 'query' => request()->query()]
+        );
+        
+        return view('admin.pages.general.entries-list', compact('paginatedEntries'));
+    }
+
+    // Helper method to get account name from entry
+    private function getAccountName($entry)
+    {
+        if ($entry->debit_type && $entry->debit_id) {
+            $type = $entry->debit_type;
+            $id = $entry->debit_id;
+            if ($type == 'customer') {
+                $customer = Customer::find($id);
+                return $customer ? 'Cust: ' . $customer->name : 'Customer #' . $id;
+            } elseif ($type == 'vendor') {
+                $vendor = Vendor::find($id);
+                return $vendor ? 'Vend: ' . $vendor->company_name : 'Vendor #' . $id;
+            } elseif ($type == 'bank') {
+                $bank = Bank::find($id);
+                return $bank ? 'Bank: ' . $bank->name : 'Bank #' . $id;
+            } elseif ($type == 'cash') {
+                return 'Cash';
+            } elseif ($type == 'expense') {
+                $expense = \App\Models\Expense::find($id);
+                return $expense ? 'Exp: ' . $expense->name : 'Expense #' . $id;
+            }
+        } elseif ($entry->credit_type && $entry->credit_id) {
+            $type = $entry->credit_type;
+            $id = $entry->credit_id;
+            if ($type == 'customer') {
+                $customer = Customer::find($id);
+                return $customer ? 'Cust: ' . $customer->name : 'Customer #' . $id;
+            } elseif ($type == 'vendor') {
+                $vendor = Vendor::find($id);
+                return $vendor ? 'Vend: ' . $vendor->company_name : 'Vendor #' . $id;
+            } elseif ($type == 'bank') {
+                $bank = Bank::find($id);
+                return $bank ? 'Bank: ' . $bank->name : 'Bank #' . $id;
+            } elseif ($type == 'cash') {
+                return 'Cash';
+            } elseif ($type == 'expense') {
+                $expense = \App\Models\Expense::find($id);
+                return $expense ? 'Exp: ' . $expense->name : 'Expense #' . $id;
+            }
+        }
+        return null;
     }
 
     public function generalEntry()
@@ -39,16 +174,17 @@ class GeneralTransactionController extends Controller
      * Display the specified entry - FIXED
      */
     public function show($id)
-{
-    try {
-        $entry = Daybook::findOrFail($id);
-        return view('admin.pages.general.view', compact('entry'));
-    } catch (\Throwable $th) {
-        \Log::error('Show entry error: ' . $th->getMessage());
-        return redirect()->route('general-transactions.index')
-            ->with('error', 'Entry not found');
+    {
+        try {
+            $entry = Daybook::findOrFail($id);
+            return view('admin.pages.general.view', compact('entry'));
+        } catch (\Throwable $th) {
+            \Log::error('Show entry error: ' . $th->getMessage());
+            return redirect()->route('general-transactions.index')
+                ->with('error', 'Entry not found');
+        }
     }
-}
+    
     /**
      * Show the form for editing the specified entry - FIXED
      */
@@ -405,7 +541,7 @@ class GeneralTransactionController extends Controller
     }
 
     /**
-     * SIMPLE WORKING VERSION - NO VALIDATION, JUST SAVE
+     * STORE GENERAL ENTRY - UPDATED WITH BATCH_ID
      */
     public function storeGeneralEntry(Request $request)
     {
@@ -415,6 +551,9 @@ class GeneralTransactionController extends Controller
         DB::beginTransaction();
         
         try {
+            // Generate a unique batch ID for this group of entries
+            $batchId = Str::uuid()->toString();
+            
             $date = $request->input('transaction_date');
             $accountIds = $request->input('account_ids', []);
             $debitAmounts = $request->input('debit_amounts', []);
@@ -422,6 +561,7 @@ class GeneralTransactionController extends Controller
             $descriptions = $request->input('descriptions', []);
             
             \Log::info('Date: ' . $date);
+            \Log::info('Batch ID: ' . $batchId);
             \Log::info('Account IDs: ' . json_encode($accountIds));
             \Log::info('Debit Amounts: ' . json_encode($debitAmounts));
             \Log::info('Credit Amounts: ' . json_encode($creditAmounts));
@@ -464,6 +604,7 @@ class GeneralTransactionController extends Controller
                 \Log::info("Index {$index}: Saving: Type={$type}, Account={$accountType}, ID={$accountIdNum}, Amount={$amount}");
                 
                 $daybook = new Daybook();
+                $daybook->batch_id = $batchId;  // <-- ADDED: Group all entries with same batch_id
                 $daybook->transaction_date = $date;
                 $daybook->amount = $amount;
                 $daybook->status = 1;
@@ -480,7 +621,7 @@ class GeneralTransactionController extends Controller
                 }
                 
                 $daybook->save();
-                \Log::info("Index {$index}: Daybook saved with ID: " . $daybook->id);
+                \Log::info("Index {$index}: Daybook saved with ID: " . $daybook->id . " (Batch: {$batchId})");
                 
                 if ($type == 'debit') {
                     if ($accountType == 'customer') {
@@ -698,12 +839,12 @@ class GeneralTransactionController extends Controller
                 $entriesSaved++;
             }
             
-            \Log::info("Total entries saved: " . $entriesSaved);
+            \Log::info("Total entries saved: " . $entriesSaved . " with Batch ID: {$batchId}");
             
             if ($entriesSaved > 0) {
                 DB::commit();
                 return redirect()->route('general-transactions.index')
-                    ->with('success', $entriesSaved . ' entry(s) created successfully!');
+                    ->with('success', $entriesSaved . ' entry(s) created successfully! (Batch: ' . $batchId . ')');
             } else {
                 DB::rollBack();
                 return redirect()->back()
@@ -723,36 +864,35 @@ class GeneralTransactionController extends Controller
 
     public function generalEntriesList(Request $request)
     {
-        $entries = Daybook::where('type', 'transaction')->orderBy('id', 'desc')->paginate(10);
-        return view('admin.pages.general.entries-list', compact('entries'));
+        return $this->index();
     }
 
-  /**
- * Get entry as JSON (for AJAX) - Keep this for any AJAX needs
- */
-public function getEntry($id)
-{
-    try {
-        $entry = Daybook::findOrFail($id);
-        
-        // If it's an AJAX request, return JSON
-        if (request()->ajax()) {
-            return response()->json([
-                'html' => view('admin.pages.general.view-modal', compact('entry'))->render()
-            ]);
+    /**
+     * Get entry as JSON (for AJAX) - Keep this for any AJAX needs
+     */
+    public function getEntry($id)
+    {
+        try {
+            $entry = Daybook::findOrFail($id);
+            
+            // If it's an AJAX request, return JSON
+            if (request()->ajax()) {
+                return response()->json([
+                    'html' => view('admin.pages.general.view-modal', compact('entry'))->render()
+                ]);
+            }
+            
+            // Otherwise return the full page view
+            return view('admin.pages.general.view', compact('entry'));
+        } catch (\Throwable $th) {
+            \Log::error('Get entry error: ' . $th->getMessage());
+            if (request()->ajax()) {
+                return response()->json(['error' => 'Entry not found'], 404);
+            }
+            return redirect()->route('general-transactions.index')
+                ->with('error', 'Entry not found');
         }
-        
-        // Otherwise return the full page view
-        return view('admin.pages.general.view', compact('entry'));
-    } catch (\Throwable $th) {
-        \Log::error('Get entry error: ' . $th->getMessage());
-        if (request()->ajax()) {
-            return response()->json(['error' => 'Entry not found'], 404);
-        }
-        return redirect()->route('general-transactions.index')
-            ->with('error', 'Entry not found');
     }
-}
 
     public function approveEntry($id)
     {
