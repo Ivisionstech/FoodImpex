@@ -540,7 +540,7 @@ public function bankStatement($uuid)
             ];
         }
 
-        return view('admin.pages.customers.bank-statement-pdf', compact(
+        return view('admin.pages.customers.bank-statement-pdf 2', compact(
             'customer',
             'allTransactions',
             'companySettings',
