@@ -46,60 +46,65 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
- // ==================== VENDORS ROUTES ====================
-Route::prefix('vendors')->name('vendors.')->group(function () {
-    Route::get('list', [VendorController::class, 'list'])->name('list');
-    Route::get('create', [VendorController::class, 'create'])->name('create');
-    Route::post('store', [VendorController::class, 'store'])->name('store');
-    Route::get('edit/{uuid}', [VendorController::class, 'edit'])->name('edit');
-    Route::get('view/{uuid}', [VendorController::class, 'view'])->name('view');
-    Route::post('update/{uuid}', [VendorController::class, 'update'])->name('update');
-    Route::post('delete/{uuid}', [VendorController::class, 'delete'])->name('delete');
+    // ==================== VENDORS ROUTES ====================
+    Route::prefix('vendors')->name('vendors.')->group(function () {
+        Route::get('list', [VendorController::class, 'list'])->name('list');
+        Route::get('create', [VendorController::class, 'create'])->name('create');
+        Route::post('store', [VendorController::class, 'store'])->name('store');
+        Route::get('edit/{uuid}', [VendorController::class, 'edit'])->name('edit');
+        Route::get('view/{uuid}', [VendorController::class, 'view'])->name('view');
+        Route::post('update/{uuid}', [VendorController::class, 'update'])->name('update');
+        Route::post('delete/{uuid}', [VendorController::class, 'delete'])->name('delete');
 
-    Route::get('payments/create', [VendorBillController::class, 'generalPaymentCreate'])->name('payments.create');
-    Route::post('payments/general-store', [VendorBillController::class, 'generalPaymentStore'])->name('payments.store');
-    Route::get('payments/list', [VendorBillController::class, 'paymentList'])->name('payments.list');
-    Route::get('payments/show/{uuid}', [VendorBillController::class, 'paymentShow'])->name('payments.show');
-    Route::get('payments/edit/{uuid}', [VendorBillController::class, 'paymentEdit'])->name('payments.edit');
-    Route::post('payments/update/{uuid}', [VendorBillController::class, 'paymentUpdate'])->name('payments.update');
-    Route::post('payments/delete/{uuid}', [VendorBillController::class, 'paymentDelete'])->name('payments.delete');
+        // ============ VENDOR BANK STATEMENT ROUTES ============
+        // IMPORTANT: These must be defined BEFORE the catch-all routes
+        Route::get('bank-statement-view/{uuid}', [VendorController::class, 'bankStatement'])->name('bank-statement');
+        Route::get('bank-statement-download/{uuid}', [VendorController::class, 'downloadBankStatement'])->name('download-bank-statement');
 
-    Route::get('send-payment/{uuid}', [VendorBillController::class, 'sendPayment'])->name('send-payment');
-    Route::post('send-payment/store/{uuid}', [VendorBillController::class, 'storeSendPayment'])->name('send-payment.store');
-    
-    // ============ BILLS ROUTES ============
-Route::get('bills/list', [VendorBillController::class, 'list'])->name('bills.list');
+        Route::get('payments/create', [VendorBillController::class, 'generalPaymentCreate'])->name('payments.create');
+        Route::post('payments/general-store', [VendorBillController::class, 'generalPaymentStore'])->name('payments.store');
+        Route::get('payments/list', [VendorBillController::class, 'paymentList'])->name('payments.list');
+        Route::get('payments/show/{uuid}', [VendorBillController::class, 'paymentShow'])->name('payments.show');
+        Route::get('payments/edit/{uuid}', [VendorBillController::class, 'paymentEdit'])->name('payments.edit');
+        Route::post('payments/update/{uuid}', [VendorBillController::class, 'paymentUpdate'])->name('payments.update');
+        Route::post('payments/delete/{uuid}', [VendorBillController::class, 'paymentDelete'])->name('payments.delete');
 
-// General Bill Creation (without stock update)
-Route::get('bills/general-create-2', [VendorBillController::class, 'generalCreate2'])->name('bills.general_create_2');
-Route::post('bills/general-store', [VendorBillController::class, 'generalStore'])->name('bills.general_store');
+        Route::get('send-payment/{uuid}', [VendorBillController::class, 'sendPayment'])->name('send-payment');
+        Route::post('send-payment/store/{uuid}', [VendorBillController::class, 'storeSendPayment'])->name('send-payment.store');
+        
+        // ============ BILLS ROUTES ============
+        Route::get('bills/list', [VendorBillController::class, 'list'])->name('bills.list');
 
-// General Bill View, Edit, PDF
-Route::get('bills/general-show-2/{uuid}', [VendorBillController::class, 'generalShow2'])->name('bills.general_show_2');
-Route::get('bills/general-edit-2/{uuid}', [VendorBillController::class, 'generalEdit2'])->name('bills.general_edit_2');
-Route::put('bills/general-update-2/{uuid}', [VendorBillController::class, 'generalUpdate2'])->name('bills.general_update_2');
-Route::get('bills/general-pdf-2/{uuid}', [VendorBillController::class, 'generalPdf2'])->name('bills.general_pdf_2');
+        // General Bill Creation (without stock update)
+        Route::get('bills/general-create-2', [VendorBillController::class, 'generalCreate2'])->name('bills.general_create_2');
+        Route::post('bills/general-store', [VendorBillController::class, 'generalStore'])->name('bills.general_store');
 
-// Old bill routes (for other types)
-Route::get('bills/create/{uuid}', [VendorBillController::class, 'create'])->name('bills.create');
-Route::post('bills/store/{uuid}', [VendorBillController::class, 'store'])->name('bills.store');
-Route::get('bills/edit/{uuid}', [VendorBillController::class, 'edit'])->name('bills.edit');
-Route::put('bills/update/{uuid}', [VendorBillController::class, 'update'])->name('bills.update');
-Route::post('bills/delete/{uuid}', [VendorBillController::class, 'delete'])->name('bills.delete');
+        // General Bill View, Edit, PDF
+        Route::get('bills/general-show-2/{uuid}', [VendorBillController::class, 'generalShow2'])->name('bills.general_show_2');
+        Route::get('bills/general-edit-2/{uuid}', [VendorBillController::class, 'generalEdit2'])->name('bills.general_edit_2');
+        Route::put('bills/general-update-2/{uuid}', [VendorBillController::class, 'generalUpdate2'])->name('bills.general_update_2');
+        Route::get('bills/general-pdf-2/{uuid}', [VendorBillController::class, 'generalPdf2'])->name('bills.general_pdf_2');
 
-// Approve & Reject Bill Routes
-Route::post('bills/approve/{uuid}', [VendorBillController::class, 'approveBill'])->name('bills.approve');
-Route::post('bills/reject/{uuid}', [VendorBillController::class, 'rejectBill'])->name('bills.reject');
+        // Old bill routes (for other types)
+        Route::get('bills/create/{uuid}', [VendorBillController::class, 'create'])->name('bills.create');
+        Route::post('bills/store/{uuid}', [VendorBillController::class, 'store'])->name('bills.store');
+        Route::get('bills/edit/{uuid}', [VendorBillController::class, 'edit'])->name('bills.edit');
+        Route::put('bills/update/{uuid}', [VendorBillController::class, 'update'])->name('bills.update');
+        Route::post('bills/delete/{uuid}', [VendorBillController::class, 'delete'])->name('bills.delete');
 
-// Vendor Payment Approval Route
-Route::post('payments/approve/{uuid}', [VendorBillController::class, 'approveVendorPayment'])->name('vendors.payments.approve');
+        // Approve & Reject Bill Routes
+        Route::post('bills/approve/{uuid}', [VendorBillController::class, 'approveBill'])->name('bills.approve');
+        Route::post('bills/reject/{uuid}', [VendorBillController::class, 'rejectBill'])->name('bills.reject');
 
-Route::get('bills/{uuid}', [VendorBillController::class, 'show'])->name('bills.show');
-Route::get('bills/{uuid}/download', [VendorBillController::class, 'downloadPdf'])->name('bills.download');
+        // Vendor Payment Approval Route
+        Route::post('payments/approve/{uuid}', [VendorBillController::class, 'approveVendorPayment'])->name('vendors.payments.approve');
 
-Route::get('payment-details/{uuid}', [VendorBillController::class, 'paymentDetails'])->name('payment-details');
-    Route::get('bank-statement/{uuid}', [VendorController::class, 'downloadBankStatement'])->name('bank-statement');
-});
+        Route::get('bills/{uuid}', [VendorBillController::class, 'show'])->name('bills.show');
+        Route::get('bills/{uuid}/download', [VendorBillController::class, 'downloadPdf'])->name('bills.download');
+
+        Route::get('payment-details/{uuid}', [VendorBillController::class, 'paymentDetails'])->name('payment-details');
+    });
+
     // ==================== CUSTOMERS ROUTES ====================
     Route::prefix('customers')->name('customers.')->group(function () {
         Route::get('list', [CustomerController::class, 'list'])->name('list');
@@ -116,12 +121,16 @@ Route::get('payment-details/{uuid}', [VendorBillController::class, 'paymentDetai
         Route::get('receive-payments/list', [CustomerController::class, 'paymentsList'])->name('receive-payment.list');
         Route::get('receive-payment/{uuid}/edit', [CustomerController::class, 'editPayment'])->name('receive-payment.edit');
         Route::put('receive-payment/{uuid}/update', [CustomerController::class, 'updatePayment'])->name('receive-payment.update');
-        Route::delete('receive-payment/{uuid}', [CustomerController::class, 'deletePayment'])->name('receive-payment.delete');     
-           
+        Route::delete('receive-payment/{uuid}', [CustomerController::class, 'deletePayment'])->name('receive-payment.delete');
+        
+        // Customer Bank Statement Routes
+        Route::get('bank-statement/{uuid}', [CustomerController::class, 'bankStatement'])->name('bank-statement');
+        Route::get('bank-statement-pdf/{uuid}', [CustomerController::class, 'bankStatementPdf'])->name('bank-statement-pdf');
     });
     
-// Customer Payment Approval Route (for received payments)
-Route::post('customers/payments/approve/{uuid}', [CustomerBillController::class, 'approvePayment'])->name('customers.payments.approve');
+    // Customer Payment Approval Route (for received payments)
+    Route::post('customers/payments/approve/{uuid}', [CustomerBillController::class, 'approvePayment'])->name('customers.payments.approve');
+    
     // ==================== CUSTOMER BILLS ROUTES ====================
     Route::get('bills/create/{uuid?}', [CustomerBillController::class, 'create'])->name('bills.create');
     Route::get('bills/new-create', [CustomerBillController::class, 'newsalecreate'])->name('new.bills.create');
@@ -137,16 +146,10 @@ Route::post('customers/payments/approve/{uuid}', [CustomerBillController::class,
     Route::get('customers/receive-payment/{uuid}', [CustomerBillController::class, 'receivePayment'])->name('customers.receive-payment');
     Route::post('customers/receive-payment/store/{uuid}', [CustomerBillController::class, 'storeReceivePayment'])->name('customers.receive-payment.store');
     Route::get('customers/receive-payment/{uuid}/show', [CustomerBillController::class, 'showReceivePayment'])->name('customers.receive-payment.show');
-// Customer Bank Statement Routes
-Route::get('customers/bank-statement/{uuid}', [CustomerController::class, 'bankStatement'])->name('customers.bank-statement');
-Route::get('customer-statement-pdf/{uuid}', [CustomerController::class, 'bankStatementPdf'])->name('customers.bank-statement-pdf');
-// Make sure you have this route - it should match the URL you're accessing
-Route::get('customer-statement/{uuid}', [CustomerController::class, 'bankStatement'])->name('customers.bank-statement');
 
     // Customer Bills Approve/Reject Routes
-Route::post('customers/bills/approve/{uuid}', [CustomerBillController::class, 'approveBill'])->name('customers.bills.approve');
-Route::delete('customers/bills/delete/{uuid}', [CustomerBillController::class, 'deleteInvoice'])->name('customers.bills.delete');
-
+    Route::post('customers/bills/approve/{uuid}', [CustomerBillController::class, 'approveBill'])->name('customers.bills.approve');
+    Route::delete('customers/bills/delete/{uuid}', [CustomerBillController::class, 'deleteInvoice'])->name('customers.bills.delete');
 
     // ==================== PRODUCTS ROUTES ====================
     Route::prefix('products')->name('products.')->group(function () {
@@ -222,33 +225,33 @@ Route::delete('customers/bills/delete/{uuid}', [CustomerBillController::class, '
     });
 
     // ==================== GENERAL TRANSACTIONS ROUTES ====================
-Route::prefix('general-transactions')->name('general-transactions.')->group(function () {
-    // Static routes first (no parameters)
-    Route::get('/', [GeneralTransactionController::class, 'index'])->name('index');
-    Route::get('/entries', [GeneralTransactionController::class, 'generalEntriesList'])->name('entries-list');
-    Route::get('/general-entry', [GeneralTransactionController::class, 'generalEntry'])->name('general-entry');
-    Route::post('/general-entry/store', [GeneralTransactionController::class, 'storeGeneralEntry'])->name('general-entry.store');
-    Route::post('/approve/{id}', [GeneralTransactionController::class, 'approveEntry'])->name('approve');
-    Route::delete('/delete/{id}', [GeneralTransactionController::class, 'deleteEntry'])->name('delete');
-    Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
-    
-    // Edit/Update routes (parameters)
-    Route::get('/{id}/edit', [GeneralTransactionController::class, 'edit'])->name('edit');
-    Route::put('/{id}', [GeneralTransactionController::class, 'update'])->name('update');
-    
-    // Transfer routes (static)
-    Route::get('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorForm'])->name('customer-to-vendor');
-    Route::post('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorTransfer'])->name('customer-to-vendor.store');
-    Route::get('/bank-to-bank', [GeneralTransactionController::class, 'bankToBankForm'])->name('bank-to-bank');
-    Route::post('/bank-to-bank', [GeneralTransactionController::class, 'bankToBankTransfer'])->name('bank-to-bank.store');
-    Route::get('/bank-withdraw', [GeneralTransactionController::class, 'bankWithdrawForm'])->name('bank-withdraw');
-    Route::post('/bank-withdraw', [GeneralTransactionController::class, 'bankWithdraw'])->name('bank-withdraw.store');
-    Route::get('/bank-deposit', [GeneralTransactionController::class, 'bankDepositForm'])->name('bank-deposit');
-    Route::post('/bank-deposit', [GeneralTransactionController::class, 'bankDeposit'])->name('bank-deposit.store');
-    
-    // Dynamic route LAST (catch-all for IDs)
-    Route::get('/{id}', [GeneralTransactionController::class, 'getEntry'])->name('get-entry');
-});
+    Route::prefix('general-transactions')->name('general-transactions.')->group(function () {
+        // Static routes first (no parameters)
+        Route::get('/', [GeneralTransactionController::class, 'index'])->name('index');
+        Route::get('/entries', [GeneralTransactionController::class, 'generalEntriesList'])->name('entries-list');
+        Route::get('/general-entry', [GeneralTransactionController::class, 'generalEntry'])->name('general-entry');
+        Route::post('/general-entry/store', [GeneralTransactionController::class, 'storeGeneralEntry'])->name('general-entry.store');
+        Route::post('/approve/{id}', [GeneralTransactionController::class, 'approveEntry'])->name('approve');
+        Route::delete('/delete/{id}', [GeneralTransactionController::class, 'deleteEntry'])->name('delete');
+        Route::get('/get-accounts', [GeneralTransactionController::class, 'getAccounts'])->name('get-accounts');
+        
+        // Edit/Update routes (parameters)
+        Route::get('/{id}/edit', [GeneralTransactionController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [GeneralTransactionController::class, 'update'])->name('update');
+        
+        // Transfer routes (static)
+        Route::get('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorForm'])->name('customer-to-vendor');
+        Route::post('/customer-to-vendor', [GeneralTransactionController::class, 'customerToVendorTransfer'])->name('customer-to-vendor.store');
+        Route::get('/bank-to-bank', [GeneralTransactionController::class, 'bankToBankForm'])->name('bank-to-bank');
+        Route::post('/bank-to-bank', [GeneralTransactionController::class, 'bankToBankTransfer'])->name('bank-to-bank.store');
+        Route::get('/bank-withdraw', [GeneralTransactionController::class, 'bankWithdrawForm'])->name('bank-withdraw');
+        Route::post('/bank-withdraw', [GeneralTransactionController::class, 'bankWithdraw'])->name('bank-withdraw.store');
+        Route::get('/bank-deposit', [GeneralTransactionController::class, 'bankDepositForm'])->name('bank-deposit');
+        Route::post('/bank-deposit', [GeneralTransactionController::class, 'bankDeposit'])->name('bank-deposit.store');
+        
+        // Dynamic route LAST (catch-all for IDs)
+        Route::get('/{id}', [GeneralTransactionController::class, 'getEntry'])->name('get-entry');
+    });
 
     // ==================== ACCESS CONTROL ROUTES ====================
     Route::prefix('access-control')->name('access-control.')->group(function () {

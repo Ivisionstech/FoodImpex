@@ -22,16 +22,83 @@
         .badge-cr { background-color: #28a745; color: white; }
         .badge-pending { background-color: #ffc107; color: #333; }
         .badge-approved { background-color: #28a745; color: white; }
+        .badge-batch { background-color: #6f42c1; color: white; }
         .text-dr { color: #dc3545 !important; font-weight: bold; }
         .text-cr { color: #28a745 !important; font-weight: bold; }
         .balance-dr { color: #dc3545 !important; font-weight: bold; }
         .balance-cr { color: #28a745 !important; font-weight: bold; }
+        
+        /* Batch Entry Styles */
+        .batch-entry-row {
+            background-color: #f8f0ff !important;
+            border-left: 3px solid #6f42c1 !important;
+        }
+        .batch-entry-row td {
+            background-color: #f8f0ff !important;
+        }
+        .batch-icon {
+            color: #6f42c1;
+            font-size: 14px;
+            margin-right: 5px;
+        }
+        .badge-batch {
+            background-color: #6f42c1 !important;
+            color: white !important;
+        }
+        
+        /* Batch Details Collapse */
+        .batch-details {
+            background-color: #faf5ff;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 5px;
+        }
+        .batch-details table {
+            margin-bottom: 0;
+            font-size: 13px;
+        }
+        .batch-details table td {
+            padding: 4px 8px;
+        }
+        .batch-details .batch-total {
+            background-color: #e8d9ff;
+            font-weight: bold;
+        }
+        
+        /* Modal Improvements */
+        .modal-body .detail-row {
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .modal-body .detail-row:last-child {
+            border-bottom: none;
+        }
+        .modal-body .detail-label {
+            font-weight: 600;
+            color: #6c757d;
+        }
+        .modal-body .detail-value {
+            font-weight: 500;
+        }
     </style>
+    
     <div class="container-xxl flex-grow-1 container-p-y">
-        <h4 class="fw-bold py-3 mb-4"><span class="text-muted fw-light">Dashboard /</span> Vendors</h4>
+        <h4 class="fw-bold py-3 mb-4">
+            <span class="text-muted fw-light">Dashboard /</span> Vendors
+        </h4>
+        
+        <!-- Vendor Personal Details Card -->
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Personal Details</h5>
+                <div>
+                    <a href="{{ route('vendors.list') }}" class="btn btn-sm btn-outline-secondary">
+                        <i class='bx bx-arrow-back'></i> Back to List
+                    </a>
+                    <a href="{{ route('vendors.edit', $vendor->uuid) }}" class="btn btn-sm btn-primary">
+                        <i class='bx bx-edit'></i> Edit
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 <div class="row">
@@ -115,12 +182,12 @@
 
         <!-- Vendor Bank Statement Section -->
         <div class="card mt-5">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Vendors Bank Statement</h5>
-                <div class="d-flex gap-2 align-items-center">
-                    <form method="GET" action="{{ route('vendors.view', $vendor->uuid) }}" class="d-flex gap-2">
-                        <input type="date" name="trans_from" class="form-control" value="{{ $trans_from }}">
-                        <input type="date" name="trans_to" class="form-control" value="{{ $trans_to }}">
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="mb-0">Vendor Bank Statement</h5>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <form method="GET" action="{{ route('vendors.view', $vendor->uuid) }}" class="d-flex gap-2 flex-wrap">
+                        <input type="date" name="trans_from" class="form-control form-control-sm" value="{{ $trans_from }}" style="width: 150px;">
+                        <input type="date" name="trans_to" class="form-control form-control-sm" value="{{ $trans_to }}" style="width: 150px;">
                         <button type="submit" class="btn btn-sm btn-primary">Filter</button>
                         @if (request()->has('trans_from') || request()->has('trans_to'))
                             <a href="{{ route('vendors.view', ['uuid' => $vendor->uuid]) }}"
@@ -128,9 +195,16 @@
                         @endif
                     </form>
                     
+                    <!-- View Report Button - Opens PDF in Browser -->
                     <a href="{{ route('vendors.bank-statement', ['uuid' => $vendor->uuid, 'trans_from' => $trans_from, 'trans_to' => $trans_to]) }}" 
-                        class="btn btn-info ms-2" target="_blank">
-                        <i class='bx bx-download'></i> Report
+                        class="btn btn-sm btn-info" target="_blank">
+                        <i class='bx bx-show'></i> View Report
+                    </a>
+                    
+                    <!-- Download PDF Button -->
+                    <a href="{{ route('vendors.download-bank-statement', ['uuid' => $vendor->uuid, 'trans_from' => $trans_from, 'trans_to' => $trans_to]) }}" 
+                        class="btn btn-sm btn-success">
+                        <i class='bx bx-download'></i> Download PDF
                     </a>
                 </div>
             </div>
@@ -175,6 +249,9 @@
                                 $isOpeningBalance = false;
                                 $statusBadge = '';
                                 $statusText = '';
+                                $hasBatch = false;
+                                $batchCount = 0;
+                                $batchEntries = [];
                                 
                                 // Determine if Opening Balance or General Entry
                                 if ($type == 'balance') {
@@ -185,6 +262,16 @@
                                     }
                                 } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
                                     $isGeneralEntry = true;
+                                }
+                                
+                                // Check if this general entry has a batch
+                                if ($isGeneralEntry && isset($transaction->batch_id) && $transaction->batch_id) {
+                                    $batchId = $transaction->batch_id;
+                                    $batchEntries = \App\Models\Daybook::where('batch_id', $batchId)->get();
+                                    if ($batchEntries->count() > 1) {
+                                        $hasBatch = true;
+                                        $batchCount = $batchEntries->count();
+                                    }
                                 }
                                 
                                 // Status Badge
@@ -216,8 +303,8 @@
                                     $descriptionText = 'Opening Balance';
                                 } elseif ($isGeneralEntry) {
                                     $displayType = 'General Entry';
-                                    $badgeClass = 'badge-general';
-                                    $badgeText = 'GENERAL';
+                                    $badgeClass = $hasBatch ? 'badge-batch' : 'badge-general';
+                                    $badgeText = $hasBatch ? 'BATCH (' . $batchCount . ')' : 'GENERAL';
                                     $amountClass = 'text-primary';
                                     
                                     if ($transactionType == 'credit') {
@@ -262,14 +349,31 @@
                                 $drCrDisplay = $currentBalance >= 0 ? 'DR' : 'CR';
                                 $balanceClass = $currentBalance < 0 ? 'balance-cr' : 'balance-dr';
                                 $typeBadgeClass = $transactionTypeDisplay == 'DR' ? 'badge-dr' : 'badge-cr';
+                                
+                                // Row class for batch entries
+                                $rowClass = $hasBatch ? 'batch-entry-row' : '';
                             @endphp
-                            <tr>
+                            <tr class="{{ $rowClass }}">
                                 <td>
                                     {{ $transaction->date ? \Carbon\Carbon::parse($transaction->date)->format('d-m-Y') : '-' }}
+                                    <div style="font-size: 9px; color: #666;">
+                                        {{ $transaction->date ? \Carbon\Carbon::parse($transaction->date)->format('h:i A') : '' }}
+                                    </div>
                                 </td>
                                 <td>
                                     <span class="badge-type {{ $badgeClass }}">{{ $badgeText }}</span>
                                     <strong>{{ $displayType }}</strong>
+                                    @if($hasBatch)
+                                        <span style="color: #6f42c1; font-size: 10px; margin-left: 5px;">
+                                            <i class="bx bx-layer batch-icon"></i> Batch of {{ $batchCount }} entries
+                                        </span>
+                                        <button type="button" class="btn btn-sm btn-outline-purple btn-sm ms-1" 
+                                                data-bs-toggle="collapse" 
+                                                data-bs-target="#batchDetails{{ $transaction->id }}"
+                                                style="padding: 0 6px; font-size: 10px; border-color: #6f42c1; color: #6f42c1;">
+                                            <i class='bx bx-chevron-down'></i> View All
+                                        </button>
+                                    @endif
                                     @if($descriptionText && $descriptionText != $displayType)
                                         <br><small class="text-muted">{{ $descriptionText }}</small>
                                     @endif
@@ -280,6 +384,100 @@
                                     <span class="badge {{ $statusBadge }}">{{ $statusText }}</span>
                                     @if(!$isApproved)
                                         <span class="text-warning" style="font-size: 10px;">(Not affecting balance)</span>
+                                    @endif
+                                    
+                                    <!-- Batch Details Collapse -->
+                                    @if($hasBatch)
+                                        <div class="collapse batch-details mt-2" id="batchDetails{{ $transaction->id }}">
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-bordered">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>#</th>
+                                                            <th>Account</th>
+                                                            <th>Type</th>
+                                                            <th>Amount</th>
+                                                            <th>Description</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach($batchEntries as $batchIndex => $batchEntry)
+                                                            @php
+                                                                $isBatchDebit = $batchEntry->debit_type && $batchEntry->debit_id;
+                                                                $isBatchCredit = $batchEntry->credit_type && $batchEntry->credit_id;
+                                                                
+                                                                $batchAccountName = '';
+                                                                $batchAccountType = '';
+                                                                
+                                                                if ($isBatchDebit) {
+                                                                    $batchAccountType = $batchEntry->debit_type;
+                                                                    if ($batchAccountType == 'customer') {
+                                                                        $customer = \App\Models\Customer::find($batchEntry->debit_id);
+                                                                        $batchAccountName = $customer ? $customer->name : 'Customer #' . $batchEntry->debit_id;
+                                                                    } elseif ($batchAccountType == 'vendor') {
+                                                                        $vendorBatch = \App\Models\Vendor::find($batchEntry->debit_id);
+                                                                        $batchAccountName = $vendorBatch ? $vendorBatch->company_name : 'Vendor #' . $batchEntry->debit_id;
+                                                                    } elseif ($batchAccountType == 'bank') {
+                                                                        $bank = \App\Models\Bank::find($batchEntry->debit_id);
+                                                                        $batchAccountName = $bank ? $bank->name : 'Bank #' . $batchEntry->debit_id;
+                                                                    } elseif ($batchAccountType == 'cash') {
+                                                                        $batchAccountName = 'Cash Account';
+                                                                    } elseif ($batchAccountType == 'expense') {
+                                                                        $expense = \App\Models\Expense::find($batchEntry->debit_id);
+                                                                        $batchAccountName = $expense ? $expense->name : 'Expense #' . $batchEntry->debit_id;
+                                                                    }
+                                                                } elseif ($isBatchCredit) {
+                                                                    $batchAccountType = $batchEntry->credit_type;
+                                                                    if ($batchAccountType == 'customer') {
+                                                                        $customer = \App\Models\Customer::find($batchEntry->credit_id);
+                                                                        $batchAccountName = $customer ? $customer->name : 'Customer #' . $batchEntry->credit_id;
+                                                                    } elseif ($batchAccountType == 'vendor') {
+                                                                        $vendorBatch = \App\Models\Vendor::find($batchEntry->credit_id);
+                                                                        $batchAccountName = $vendorBatch ? $vendorBatch->company_name : 'Vendor #' . $batchEntry->credit_id;
+                                                                    } elseif ($batchAccountType == 'bank') {
+                                                                        $bank = \App\Models\Bank::find($batchEntry->credit_id);
+                                                                        $batchAccountName = $bank ? $bank->name : 'Bank #' . $batchEntry->credit_id;
+                                                                    } elseif ($batchAccountType == 'cash') {
+                                                                        $batchAccountName = 'Cash Account';
+                                                                    } elseif ($batchAccountType == 'expense') {
+                                                                        $expense = \App\Models\Expense::find($batchEntry->credit_id);
+                                                                        $batchAccountName = $expense ? $expense->name : 'Expense #' . $batchEntry->credit_id;
+                                                                    }
+                                                                }
+                                                                
+                                                                $batchTypeLabel = $isBatchDebit ? 'Debit' : 'Credit';
+                                                                $batchTypeClass = $isBatchDebit ? 'text-danger' : 'text-success';
+                                                            @endphp
+                                                            <tr>
+                                                                <td>{{ $batchIndex + 1 }}</td>
+                                                                <td>
+                                                                    <span class="text-capitalize">{{ $batchAccountType }}</span>
+                                                                    <br><small class="text-muted">{{ $batchAccountName }}</small>
+                                                                </td>
+                                                                <td>
+                                                                    <span class="badge bg-{{ $isBatchDebit ? 'danger' : 'success' }} bg-opacity-10 text-{{ $isBatchDebit ? 'danger' : 'success' }}">
+                                                                        {{ $batchTypeLabel }}
+                                                                    </span>
+                                                                </td>
+                                                                <td class="fw-bold {{ $batchTypeClass }}">
+                                                                    PKR {{ number_format($batchEntry->amount, 0) }}
+                                                                </td>
+                                                                <td><small>{{ $batchEntry->description ?? 'N/A' }}</small></td>
+                                                            </tr>
+                                                        @endforeach
+                                                    </tbody>
+                                                    <tfoot>
+                                                        <tr class="batch-total">
+                                                            <td colspan="3" class="text-end fw-bold">Total:</td>
+                                                            <td class="fw-bold text-primary">
+                                                                PKR {{ number_format($batchEntries->sum('amount'), 0) }}
+                                                            </td>
+                                                            <td></td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
                                     @endif
                                 </td>
                                 <td>
@@ -320,7 +518,8 @@
                                                 data-entry-type="{{ $transactionTypeDisplay }}"
                                                 data-entry-description="{{ $descriptionText }}"
                                                 data-entry-status="{{ $statusText }}"
-                                                data-entry-balance="{{ number_format(abs($currentBalance), 0) }} {{ $drCrDisplay }}">
+                                                data-entry-balance="{{ number_format(abs($currentBalance), 0) }} {{ $drCrDisplay }}"
+                                                data-entry-batch="{{ $hasBatch ? 'Yes (' . $batchCount . ' entries)' : 'No' }}">
                                             <i class='bx bx-show'></i>
                                         </button>
                                     @else
@@ -354,31 +553,35 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row mb-3">
-                        <div class="col-4 fw-bold">Date:</div>
-                        <div class="col-8" id="modalEntryDate">-</div>
+                    <div class="detail-row d-flex justify-content-between">
+                        <span class="detail-label">Date:</span>
+                        <span class="detail-value" id="modalEntryDate">-</span>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-4 fw-bold">Amount:</div>
-                        <div class="col-8" id="modalEntryAmount">-</div>
+                    <div class="detail-row d-flex justify-content-between">
+                        <span class="detail-label">Amount:</span>
+                        <span class="detail-value" id="modalEntryAmount">-</span>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-4 fw-bold">Type:</div>
-                        <div class="col-8">
+                    <div class="detail-row d-flex justify-content-between">
+                        <span class="detail-label">Type:</span>
+                        <span class="detail-value">
                             <span id="modalEntryType" class="badge"></span>
-                        </div>
+                        </span>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-4 fw-bold">Description:</div>
-                        <div class="col-8" id="modalEntryDescription">-</div>
+                    <div class="detail-row d-flex justify-content-between">
+                        <span class="detail-label">Description:</span>
+                        <span class="detail-value" id="modalEntryDescription">-</span>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-4 fw-bold">Status:</div>
-                        <div class="col-8" id="modalEntryStatus">-</div>
+                    <div class="detail-row d-flex justify-content-between">
+                        <span class="detail-label">Status:</span>
+                        <span class="detail-value" id="modalEntryStatus">-</span>
                     </div>
-                    <div class="row mb-3">
-                        <div class="col-4 fw-bold">Balance After:</div>
-                        <div class="col-8" id="modalEntryBalance">-</div>
+                    <div class="detail-row d-flex justify-content-between">
+                        <span class="detail-label">Balance After:</span>
+                        <span class="detail-value" id="modalEntryBalance">-</span>
+                    </div>
+                    <div class="detail-row d-flex justify-content-between">
+                        <span class="detail-label">Batch Entry:</span>
+                        <span class="detail-value" id="modalEntryBatch">-</span>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -409,6 +612,7 @@
                 var entryDescription = button.getAttribute('data-entry-description');
                 var entryStatus = button.getAttribute('data-entry-status');
                 var entryBalance = button.getAttribute('data-entry-balance');
+                var entryBatch = button.getAttribute('data-entry-batch');
                 
                 var modalDate = generalEntryModal.querySelector('#modalEntryDate');
                 var modalAmount = generalEntryModal.querySelector('#modalEntryAmount');
@@ -416,6 +620,7 @@
                 var modalDescription = generalEntryModal.querySelector('#modalEntryDescription');
                 var modalStatus = generalEntryModal.querySelector('#modalEntryStatus');
                 var modalBalance = generalEntryModal.querySelector('#modalEntryBalance');
+                var modalBatch = generalEntryModal.querySelector('#modalEntryBatch');
                 
                 if (modalDate) modalDate.textContent = entryDate;
                 if (modalAmount) modalAmount.textContent = 'PKR ' + entryAmount;
@@ -423,8 +628,10 @@
                     modalType.textContent = entryType;
                     if (entryType === 'DR') {
                         modalType.className = 'badge bg-danger';
-                    } else {
+                    } else if (entryType === 'CR') {
                         modalType.className = 'badge bg-success';
+                    } else {
+                        modalType.className = 'badge bg-secondary';
                     }
                 }
                 if (modalDescription) modalDescription.textContent = entryDescription;
@@ -437,6 +644,16 @@
                     }
                 }
                 if (modalBalance) modalBalance.textContent = 'PKR ' + entryBalance;
+                if (modalBatch) {
+                    modalBatch.textContent = entryBatch;
+                    if (entryBatch && entryBatch.includes('Yes')) {
+                        modalBatch.style.color = '#6f42c1';
+                        modalBatch.style.fontWeight = 'bold';
+                    } else {
+                        modalBatch.style.color = '#6c757d';
+                        modalBatch.style.fontWeight = 'normal';
+                    }
+                }
             });
         }
     });
