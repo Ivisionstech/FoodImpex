@@ -18,15 +18,15 @@
         .badge-balance { background-color: #17a2b8; color: white; }
         .badge-return { background-color: #dc3545; color: white; }
         .badge-general { background-color: #6c757d; color: white; }
-        .badge-dr { background-color: #28a745; color: white; }
-        .badge-cr { background-color: #dc3545; color: white; }
+        .badge-dr { background-color: #dc3545; color: white; }
+        .badge-cr { background-color: #28a745; color: white; }
         .badge-pending { background-color: #ffc107; color: #333; }
         .badge-approved { background-color: #28a745; color: white; }
         .badge-batch { background-color: #6f42c1; color: white; }
-        .text-dr { color: #28a745 !important; font-weight: bold; }
-        .text-cr { color: #dc3545 !important; font-weight: bold; }
-        .balance-dr { color: #28a745 !important; font-weight: bold; }
-        .balance-cr { color: #dc3545 !important; font-weight: bold; }
+        .text-dr { color: #dc3545 !important; font-weight: bold; }
+        .text-cr { color: #28a745 !important; font-weight: bold; }
+        .balance-dr { color: #dc3545 !important; font-weight: bold; }
+        .balance-cr { color: #28a745 !important; font-weight: bold; }
         
         /* Batch Entry Styles */
         .batch-entry-row {
@@ -175,7 +175,7 @@
                                         ->first();
                                     
                                     $balance = $lastTransaction ? floatval($lastTransaction->current_balance ?? 0) : 0;
-                                    // FIXED: Negative = DR, Positive = CR
+                                    // Negative = DR, Positive = CR
                                     $balanceClass = $balance < 0 ? 'bg-label-danger' : 'bg-label-success';
                                     $balanceLabel = $balance < 0 ? 'DR' : 'CR';
                                 @endphp
@@ -266,7 +266,8 @@
                                     if (stripos($description, 'Opening Balance') !== false) {
                                         $isOpeningBalance = true;
                                         
-                                        if ($currentBalance >= 0) {
+                                        // For display purposes, use transaction_type from database
+                                        if ($transactionType == 'credit') {
                                             $transactionTypeDisplay = 'CR';
                                             $amountClass = 'text-cr';
                                             $displayType = 'Opening Balance (Credit)';
@@ -312,8 +313,8 @@
                                     $displayType = 'Payment Sent';
                                     $badgeClass = 'badge-payment';
                                     $badgeText = 'PAYMENT';
-                                    $amountClass = 'text-cr';
-                                    $transactionTypeDisplay = 'CR';
+                                    $amountClass = 'text-dr';
+                                    $transactionTypeDisplay = 'DR';
                                     $descriptionText = $description ?: 'Payment to vendor';
                                     if (isset($transaction->send_via) && $transaction->send_via) {
                                         $descriptionText .= ' via ' . ucfirst($transaction->send_via);
@@ -336,22 +337,22 @@
                                     $displayType = 'Return';
                                     $badgeClass = 'badge-return';
                                     $badgeText = 'RETURN';
-                                    $amountClass = 'text-cr';
-                                    $transactionTypeDisplay = 'CR';
+                                    $amountClass = 'text-dr';
+                                    $transactionTypeDisplay = 'DR';
                                     $descriptionText = $description ?: 'Product return';
                                 } elseif ($type == 'credit') {
                                     $displayType = 'Credit Entry';
                                     $badgeClass = 'badge-credit';
                                     $badgeText = 'CREDIT';
-                                    $amountClass = 'text-dr';
-                                    $transactionTypeDisplay = 'DR';
+                                    $amountClass = 'text-cr';
+                                    $transactionTypeDisplay = 'CR';
                                     $descriptionText = $description ?: 'Credit transaction';
                                 } elseif ($type == 'debit') {
                                     $displayType = 'Debit Entry';
                                     $badgeClass = 'badge-debit';
                                     $badgeText = 'DEBIT';
-                                    $amountClass = 'text-cr';
-                                    $transactionTypeDisplay = 'CR';
+                                    $amountClass = 'text-dr';
+                                    $transactionTypeDisplay = 'DR';
                                     $descriptionText = $description ?: 'Debit transaction';
                                 } else {
                                     $displayType = ucfirst($type) ?: 'Entry';
@@ -363,8 +364,7 @@
                                 }
                                 
                                 // =============================================
-                                // CURRENT BALANCE COLUMN - FIXED
-                                // Negative = DR, Positive = CR
+                                // CURRENT BALANCE - Negative = DR, Positive = CR
                                 // =============================================
                                 $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
                                 $balanceClass = $currentBalance < 0 ? 'balance-dr' : 'balance-cr';
@@ -506,17 +506,23 @@
                                     </span>
                                 </td>
                                 <td>
+                                    {{-- TYPE COLUMN - FIXED: Use actual transaction_type from database --}}
                                     @if($isOpeningBalance)
-                                        <span class="badge {{ $transactionTypeDisplay == 'DR' ? 'badge-dr' : 'badge-cr' }}">
-                                            {{ $transactionTypeDisplay }}
+                                        @php
+                                            // Get the actual transaction type from database
+                                            $actualType = $transaction->transaction_type ?? '';
+                                            $displayTypeLabel = strtoupper($actualType);
+                                            $typeClass = $displayTypeLabel == 'DR' ? 'badge-dr' : 'badge-cr';
+                                        @endphp
+                                        <span class="badge {{ $typeClass }}">
+                                            {{ $displayTypeLabel ?: 'CR' }}
                                         </span>
                                     @else
                                         <span class="badge {{ $typeBadgeClass }}">{{ $transactionTypeDisplay }}</span>
                                     @endif
                                 </td>
                                 <td>
-                                    <!-- CURRENT BALANCE COLUMN - FIXED -->
-                                    <!-- Negative = DR, Positive = CR -->
+                                    {{-- CURRENT BALANCE COLUMN - Negative = DR, Positive = CR --}}
                                     <span class="fw-bold {{ $balanceClass }}">
                                         PKR {{ number_format(abs($currentBalance), 0) }}
                                         <small>{{ $drCrDisplay }}</small>
@@ -655,9 +661,9 @@
                 if (modalType) {
                     modalType.textContent = entryType;
                     if (entryType === 'DR') {
-                        modalType.className = 'badge bg-success';
-                    } else if (entryType === 'CR') {
                         modalType.className = 'badge bg-danger';
+                    } else if (entryType === 'CR') {
+                        modalType.className = 'badge bg-success';
                     } else {
                         modalType.className = 'badge bg-secondary';
                     }

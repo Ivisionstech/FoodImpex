@@ -51,7 +51,6 @@ class VendorController extends Controller
         try {
             DB::beginTransaction();
             
-            // Log the incoming data for debugging
             \Log::info('Vendor Store Request:', $request->all());
             
             $vendor = Vendor::create([
@@ -353,16 +352,11 @@ class VendorController extends Controller
                 ]);
             }
 
-            // =============================================
-            // APPLY SAME FILTERS AS VIEW PAGE
-            // =============================================
             $trans_from = $request->trans_from;
             $trans_to = $request->trans_to;
 
-            // Get vendor transactions with filters
             $transactionsQuery = $vendor->vendorTransactions();
             
-            // Apply date filters to transactions
             if ($trans_from && $trans_to) {
                 $transactionsQuery->whereBetween('date', [$trans_from, $trans_to]);
             } elseif ($trans_from) {
@@ -371,27 +365,17 @@ class VendorController extends Controller
                 $transactionsQuery->where('date', '<=', $trans_to);
             }
 
-            // Get all vendor transactions in ASCENDING order for correct running balance
             $vendorTransactions = $transactionsQuery
                 ->with(['bill.billProducts.product'])
                 ->orderBy('date', 'ASC')
                 ->orderBy('id', 'ASC')
                 ->get();
 
-            // =============================================
-            // FILTER OUT BILL TYPE TRANSACTIONS
-            // ONLY SHOW GENERAL ENTRIES IN BANK STATEMENT
-            // =============================================
             $filteredTransactions = $vendorTransactions->filter(function ($transaction) {
                 $type = strtolower($transaction->type ?? '');
-                // Skip bill type transactions
                 return $type != 'bill';
             });
 
-            // =============================================
-            // CALCULATE RUNNING BALANCE
-            // ONLY APPROVED TRANSACTIONS AFFECT BALANCE
-            // =============================================
             $runningBalance = 0;
             $transactionsWithBalance = [];
 
@@ -403,27 +387,18 @@ class VendorController extends Controller
                 $transactionType = $transaction->transaction_type ?? '';
                 $isApproved = ($approvalStatus == 'approved');
                 
-                // =============================================
-                // ONLY APPROVED TRANSACTIONS AFFECT BALANCE
-                // =============================================
                 if ($isApproved) {
                     if ($type == 'payment') {
-                        // Payment = Money OUT = SUBTRACT from balance
                         $runningBalance -= $amount;
                     } elseif ($type == 'balance') {
                         if (stripos($description, 'Opening Balance') !== false) {
-                            // Opening Balance = SET the starting balance
                             $runningBalance = $amount;
                         } else {
-                            // General Entry from daybook
                             if ($transactionType == 'credit') {
-                                // Credit = Money IN = ADD to balance
                                 $runningBalance += $amount;
                             } elseif ($transactionType == 'debit') {
-                                // Debit = Money OUT = SUBTRACT from balance
                                 $runningBalance -= $amount;
                             } else {
-                                // Fallback: positive = Money IN, negative = Money OUT
                                 if ($amount > 0) {
                                     $runningBalance += $amount;
                                 } else {
@@ -432,24 +407,17 @@ class VendorController extends Controller
                             }
                         }
                     } elseif ($type == 'return') {
-                        // Return = Money OUT = SUBTRACT from balance
                         $runningBalance -= $amount;
                     } elseif ($type == 'credit') {
-                        // Credit = Money IN = ADD to balance
                         $runningBalance += $amount;
                     } elseif ($type == 'debit') {
-                        // Debit = Money OUT = SUBTRACT from balance
                         $runningBalance -= $amount;
                     } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
-                        // General Entry
                         if ($transactionType == 'credit') {
-                            // Credit = Money IN = ADD to balance
                             $runningBalance += $amount;
                         } elseif ($transactionType == 'debit') {
-                            // Debit = Money OUT = SUBTRACT from balance
                             $runningBalance -= $amount;
                         } else {
-                            // Fallback: positive = Money IN, negative = Money OUT
                             if ($amount > 0) {
                                 $runningBalance += $amount;
                             } else {
@@ -459,17 +427,14 @@ class VendorController extends Controller
                     }
                 }
                 
-                // Create a copy with calculated balance
                 $transactionCopy = clone $transaction;
                 $transactionCopy->calculated_balance = $runningBalance;
                 $transactionCopy->is_approved = $isApproved;
                 $transactionsWithBalance[] = $transactionCopy;
             }
 
-            // Reverse for display (newest first)
             $vendorTransactions = array_reverse($transactionsWithBalance);
 
-            // Calculate summary totals
             $totalDebits = 0;
             $totalCredits = 0;
             
@@ -492,7 +457,6 @@ class VendorController extends Controller
                             $totalDebits += abs($amount);
                         }
                     } else {
-                        // General Entry
                         if ($transactionType == 'credit' || $amount > 0) {
                             $totalCredits += $amount;
                         } else {
@@ -514,7 +478,6 @@ class VendorController extends Controller
                 }
             }
 
-            // Get company settings
             $companySettings = null;
             if (Schema::hasTable('settings')) {
                 $companySettings = DB::table('settings')->first();
@@ -529,18 +492,13 @@ class VendorController extends Controller
                 ];
             }
 
-            // =============================================
-            // FETCH BATCH ENTRIES FOR GENERAL ENTRIES
-            // =============================================
             $generalEntryDetails = [];
             foreach ($vendorTransactions as $transaction) {
                 $type = strtolower($transaction->type ?? '');
                 $isGeneralEntry = ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '');
                 
-                // If this is a general entry, check if it has a batch_id
                 if ($isGeneralEntry && isset($transaction->batch_id) && $transaction->batch_id) {
                     $batchId = $transaction->batch_id;
-                    // Get all entries in this batch
                     $batchEntries = \App\Models\Daybook::where('batch_id', $batchId)->get();
                     if ($batchEntries->count() > 1) {
                         $generalEntryDetails[$transaction->id] = [
@@ -553,7 +511,6 @@ class VendorController extends Controller
                 }
             }
 
-            // Generate PDF using DomPDF
             $pdf = \PDF::loadView('admin.pages.vendors.bank-statement-pdf', compact(
                 'vendor', 
                 'vendorTransactions',
@@ -565,10 +522,8 @@ class VendorController extends Controller
                 'generalEntryDetails'
             ));
             
-            // Set paper size and orientation
             $pdf->setPaper('A4', 'portrait');
             
-            // Download as file
             $filename = 'Vendor_Bank_Statement_' . $vendor->company_name . '_' . date('Y-m-d') . '.pdf';
             return $pdf->download($filename);
             
@@ -594,14 +549,11 @@ class VendorController extends Controller
                 return redirect()->route('vendors.list')->with('error', 'Vendor not found');
             }
 
-            // Get request filters
             $trans_from = request()->trans_from;
             $trans_to = request()->trans_to;
 
-            // Get ONLY vendor transactions (same as view page - NO daybook entries separately)
             $transactionsQuery = $vendor->vendorTransactions();
             
-            // Apply date filters to transactions
             if ($trans_from && $trans_to) {
                 $transactionsQuery->whereBetween('date', [$trans_from, $trans_to]);
             } elseif ($trans_from) {
@@ -610,19 +562,15 @@ class VendorController extends Controller
                 $transactionsQuery->where('date', '<=', $trans_to);
             }
             
-            // Get transactions ordered by date (ASCENDING for statement - oldest first)
             $allTransactions = $transactionsQuery->orderBy('date', 'ASC')
                 ->orderBy('id', 'ASC')
                 ->get();
 
-            // Filter out bill type transactions (same as view)
             $filteredTransactions = $allTransactions->filter(function ($transaction) {
                 $type = strtolower($transaction->type ?? '');
-                // Skip bill type transactions
                 return $type != 'bill';
             });
 
-            // Calculate running balance correctly (only approved transactions affect balance)
             $runningBalance = 0;
             $transactionsWithBalance = [];
 
@@ -634,32 +582,24 @@ class VendorController extends Controller
                 $transactionType = $transaction->transaction_type ?? '';
                 $isApproved = ($approvalStatus == 'approved');
                 
-                // Store the original amount for display
                 $transaction->original_amount = $amount;
                 
-                // ONLY APPROVED TRANSACTIONS AFFECT BALANCE
                 if ($isApproved) {
                     if ($type == 'payment') {
-                        // Payment = Money OUT = SUBTRACT from balance
                         $runningBalance -= $amount;
                         $transaction->transaction_type_display = 'debit';
                     } elseif ($type == 'balance') {
                         if (stripos($description, 'Opening Balance') !== false) {
-                            // Opening Balance = SET the starting balance
                             $runningBalance = $amount;
                             $transaction->transaction_type_display = $amount > 0 ? 'credit' : 'debit';
                         } else {
-                            // General Entry from daybook
                             if ($transactionType == 'credit') {
-                                // Credit = Money IN = ADD to balance
                                 $runningBalance += $amount;
                                 $transaction->transaction_type_display = 'credit';
                             } elseif ($transactionType == 'debit') {
-                                // Debit = Money OUT = SUBTRACT from balance
                                 $runningBalance -= $amount;
                                 $transaction->transaction_type_display = 'debit';
                             } else {
-                                // Fallback: positive = Money IN, negative = Money OUT
                                 if ($amount > 0) {
                                     $runningBalance += $amount;
                                     $transaction->transaction_type_display = 'credit';
@@ -670,29 +610,22 @@ class VendorController extends Controller
                             }
                         }
                     } elseif ($type == 'return') {
-                        // Return = Money OUT = SUBTRACT from balance
                         $runningBalance -= $amount;
                         $transaction->transaction_type_display = 'debit';
                     } elseif ($type == 'credit') {
-                        // Credit = Money IN = ADD to balance
                         $runningBalance += $amount;
                         $transaction->transaction_type_display = 'credit';
                     } elseif ($type == 'debit') {
-                        // Debit = Money OUT = SUBTRACT from balance
                         $runningBalance -= $amount;
                         $transaction->transaction_type_display = 'debit';
                     } elseif ($type == 'general' || $type == 'transaction' || $type == 'daybook' || $type == '') {
-                        // General Entry
                         if ($transactionType == 'credit') {
-                            // Credit = Money IN = ADD to balance
                             $runningBalance += $amount;
                             $transaction->transaction_type_display = 'credit';
                         } elseif ($transactionType == 'debit') {
-                            // Debit = Money OUT = SUBTRACT from balance
                             $runningBalance -= $amount;
                             $transaction->transaction_type_display = 'debit';
                         } else {
-                            // Fallback: positive = Money IN, negative = Money OUT
                             if ($amount > 0) {
                                 $runningBalance += $amount;
                                 $transaction->transaction_type_display = 'credit';
@@ -703,7 +636,6 @@ class VendorController extends Controller
                         }
                     }
                 } else {
-                    // For pending transactions, just set display type but don't affect balance
                     if ($type == 'payment' || $type == 'return' || $type == 'debit') {
                         $transaction->transaction_type_display = 'debit';
                     } elseif ($type == 'credit' || $type == 'balance') {
@@ -717,16 +649,13 @@ class VendorController extends Controller
                     }
                 }
                 
-                // Set current balance
                 $transaction->current_balance = $runningBalance;
                 $transaction->is_approved = $isApproved;
                 $transactionsWithBalance[] = $transaction;
             }
 
-            // Reverse for display (newest first) - same as view
             $vendorTransactions = array_reverse($transactionsWithBalance);
 
-            // Calculate summary totals
             $totalDebits = 0;
             $totalCredits = 0;
             
@@ -749,7 +678,6 @@ class VendorController extends Controller
                             $totalDebits += abs($amount);
                         }
                     } else {
-                        // General Entry
                         if ($transactionType == 'credit' || $amount > 0) {
                             $totalCredits += $amount;
                         } else {
@@ -771,7 +699,6 @@ class VendorController extends Controller
                 }
             }
 
-            // Fetch Company Settings
             $companySettings = null;
             if (Schema::hasTable('companies')) {
                 $companySettings = DB::table('companies')->first();
@@ -786,7 +713,6 @@ class VendorController extends Controller
                 ];
             }
 
-            // Return the PDF view (not download)
             return view('admin.pages.vendors.bank-statement-pdf', compact(
                 'vendor',
                 'vendorTransactions',
