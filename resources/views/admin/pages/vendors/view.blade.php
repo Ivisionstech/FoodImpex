@@ -167,14 +167,8 @@
                             </div>
                             <div class="col-md-8">
                                 @php
-                                    // Use the actual balance from the last transaction
-                                    $lastTransaction = $vendor->vendorTransactions()
-                                        ->where('approval_status', 'approved')
-                                        ->orderBy('date', 'DESC')
-                                        ->orderBy('id', 'DESC')
-                                        ->first();
-                                    
-                                    $balance = $lastTransaction ? floatval($lastTransaction->current_balance ?? 0) : 0;
+                                    // Use vendor->balance directly (same as list page)
+                                    $balance = floatval($vendor->balance ?? 0);
                                     // Negative = DR, Positive = CR
                                     $balanceClass = $balance < 0 ? 'bg-label-danger' : 'bg-label-success';
                                     $balanceLabel = $balance < 0 ? 'DR' : 'CR';
