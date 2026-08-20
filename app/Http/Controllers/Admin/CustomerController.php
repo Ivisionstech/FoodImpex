@@ -98,6 +98,7 @@ class CustomerController extends Controller
                 'method' => $request->receive_via,
                 'bank_id' => $request->receive_via == 'bank' ? $request->bank_id : null,
                 'attachments' => json_encode($imagePaths),
+                'approval_status' => 'approved',
             ]);
 
             if ($request->receive_via == 'bank') {
@@ -161,49 +162,49 @@ class CustomerController extends Controller
         }
     }
 
-   public function store(StoreRequest $request)
-{
-    try {
-        DB::beginTransaction();
-        $customer = Customer::create([
-            'uuid' => Str::uuid(),
-            'name' => $request->name,
-            'person_name' => $request->person_name,
-            'phone' => $request->phone,
-            'email' => $request->email,
-            'balance' => $request->balance,
-            'notes' => $request->notes,
-            'address' => $request->address,
-        ]);
-        
-        // Create opening balance transaction - Auto Approved
-        $openingBalance = $request->balance ?? 0;
-        CustomerTransaction::create([
-            'uuid' => Str::uuid(),
-            'customer_id' => $customer->id,
-            'transaction_date' => $request->open_balance_date ?? now(),
-            'amount' => $openingBalance,
-            'type' => 'balance',
-            'description' => 'Opening Balance',
-            'current_balance' => $openingBalance,
-            'customer_bill_id' => null,
-            'approval_status' => 'approved',  // <-- ADD THIS LINE
-        ]);
-        
-        DB::commit();
-        return response()->json([
-            'status' => true,
-            'message' => 'Customer created successfully.',
-            'redirect' => route('customers.list'),
-        ]);
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'status' => false,
-            'message' => 'Failed to create customer: ' . $e->getMessage(),
-        ]);
+    public function store(StoreRequest $request)
+    {
+        try {
+            DB::beginTransaction();
+            $customer = Customer::create([
+                'uuid' => Str::uuid(),
+                'name' => $request->name,
+                'person_name' => $request->person_name,
+                'phone' => $request->phone,
+                'email' => $request->email,
+                'balance' => $request->balance,
+                'notes' => $request->notes,
+                'address' => $request->address,
+            ]);
+            
+            // Create opening balance transaction - Auto Approved
+            $openingBalance = $request->balance ?? 0;
+            CustomerTransaction::create([
+                'uuid' => Str::uuid(),
+                'customer_id' => $customer->id,
+                'transaction_date' => $request->open_balance_date ?? now(),
+                'amount' => $openingBalance,
+                'type' => 'balance',
+                'description' => 'Opening Balance',
+                'current_balance' => $openingBalance,
+                'customer_bill_id' => null,
+                'approval_status' => 'approved',
+            ]);
+            
+            DB::commit();
+            return response()->json([
+                'status' => true,
+                'message' => 'Customer created successfully.',
+                'redirect' => route('customers.list'),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to create customer: ' . $e->getMessage(),
+            ]);
+        }
     }
-}
 
     public function edit(string $uuid)
     {
@@ -211,62 +212,61 @@ class CustomerController extends Controller
         return view('admin.pages.customers.edit', compact('customer'));
     }
 
-public function view(Request $request, string $uuid)
-{
-    try {
-        $customer = Customer::where('uuid', $uuid)->firstOrFail();
+    public function view(Request $request, string $uuid)
+    {
+        try {
+            $customer = Customer::where('uuid', $uuid)->firstOrFail();
 
-        $bill_from = $request->bill_from;
-        $bill_to = $request->bill_to;
-        $trans_from = $request->trans_from;
-        $trans_to = $request->trans_to;
+            $bill_from = $request->bill_from;
+            $bill_to = $request->bill_to;
+            $trans_from = $request->trans_from;
+            $trans_to = $request->trans_to;
 
-        // Get ONLY customer transactions (bills, payments, balance, general entries)
-        $transactionsQuery = $customer->customerTransactions();
-        
-        // Apply date filters to transactions
-        if ($trans_from && $trans_to) {
-            $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-        } elseif ($trans_from) {
-            $transactionsQuery->where('transaction_date', '>=', $trans_from);
-        } elseif ($trans_to) {
-            $transactionsQuery->where('transaction_date', '<=', $trans_to);
+            // Get ONLY customer transactions (bills, payments, balance, general entries)
+            $transactionsQuery = $customer->customerTransactions();
+            
+            // Apply date filters to transactions
+            if ($trans_from && $trans_to) {
+                $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
+            } elseif ($trans_from) {
+                $transactionsQuery->where('transaction_date', '>=', $trans_from);
+            } elseif ($trans_to) {
+                $transactionsQuery->where('transaction_date', '<=', $trans_to);
+            }
+            
+            // Get transactions ordered by date (DESCENDING - newest first)
+            $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
+                ->orderBy('id', 'DESC')
+                ->get();
+            
+            // Get bills with filters (for the Bills section only)
+            $billsQuery = $customer->bills();
+            if ($bill_from && $bill_to) {
+                $billsQuery->whereBetween('bill_date', [$bill_from, $bill_to]);
+            } elseif ($bill_from) {
+                $billsQuery->where('bill_date', '>=', $bill_from);
+            } elseif ($bill_to) {
+                $billsQuery->where('bill_date', '<=', $bill_to);
+            }
+            $customerBills = $billsQuery->orderBy('bill_date', 'DESC')->get();
+
+            return view('admin.pages.customers.view', compact(
+                'customer',
+                'customerBills',
+                'customerTransactions',
+                'bill_from',
+                'bill_to',
+                'trans_from',
+                'trans_to'
+            ));
+        } catch (\Exception $e) {
+            Log::error('Failed to view customer: ' . $e->getMessage());
+            return redirect()->back()->with([
+                'status' => false,
+                'message' => 'Failed to view customer: ' . $e->getMessage(),
+            ]);
         }
-        
-        // Get transactions ordered by date (DESCENDING - newest first)
-        // This ensures latest entries appear on top, including opening balance at the bottom
-        $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
-            ->orderBy('id', 'DESC')
-            ->get();
-        
-        // Get bills with filters (for the Bills section only)
-        $billsQuery = $customer->bills();
-        if ($bill_from && $bill_to) {
-            $billsQuery->whereBetween('bill_date', [$bill_from, $bill_to]);
-        } elseif ($bill_from) {
-            $billsQuery->where('bill_date', '>=', $bill_from);
-        } elseif ($bill_to) {
-            $billsQuery->where('bill_date', '<=', $bill_to);
-        }
-        $customerBills = $billsQuery->orderBy('bill_date', 'DESC')->get();
-
-        return view('admin.pages.customers.view', compact(
-            'customer',
-            'customerBills',
-            'customerTransactions',
-            'bill_from',
-            'bill_to',
-            'trans_from',
-            'trans_to'
-        ));
-    } catch (\Exception $e) {
-        Log::error('Failed to view customer: ' . $e->getMessage());
-        return redirect()->back()->with([
-            'status' => false,
-            'message' => 'Failed to view customer: ' . $e->getMessage(),
-        ]);
     }
-}
 
     public function update(Request $request)
     {
@@ -471,158 +471,182 @@ public function view(Request $request, string $uuid)
         }
     }
 
- /**
- * Display Bank Statement as HTML - Same logic as view page (NO duplicates)
- */
-/**
- * Display Bank Statement as HTML - Same logic as view page (NO duplicates)
- */
-public function bankStatement($uuid)
-{
-    try {
-        $customer = Customer::where('uuid', $uuid)->first();
-        
-        if (!$customer) {
-            return redirect()->route('customers.list')->with('error', 'Customer not found');
-        }
-
-        // Get request filters
-        $bill_from = request()->bill_from;
-        $bill_to = request()->bill_to;
-        $trans_from = request()->trans_from;
-        $trans_to = request()->trans_to;
-
-        // Get ONLY customer transactions (same as view page - NO daybook entries separately)
-        $transactionsQuery = $customer->customerTransactions();
-        
-        // Apply date filters to transactions
-        if ($trans_from && $trans_to) {
-            $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-        } elseif ($trans_from) {
-            $transactionsQuery->where('transaction_date', '>=', $trans_from);
-        } elseif ($trans_to) {
-            $transactionsQuery->where('transaction_date', '<=', $trans_to);
-        }
-        
-        // Get transactions ordered by date (ASCENDING for statement - oldest first)
-        $allTransactions = $transactionsQuery->orderBy('transaction_date', 'ASC')
-            ->orderBy('id', 'ASC')
-            ->get();
-
-        // Calculate running balance correctly
-        $runningBalance = 0;
-        foreach ($allTransactions as $transaction) {
-            $amount = floatval($transaction->amount);
-            $type = $transaction->type;
+    /**
+     * Display Bank Statement as HTML - View in Browser
+     */
+    public function bankStatement($uuid)
+    {
+        try {
+            $customer = Customer::where('uuid', $uuid)->first();
             
-            // Debit (bill, debit) increases balance (customer owes more)
-            // Credit (payment, credit) decreases balance (customer pays)
-            if ($type == 'bill' || $type == 'debit') {
-                $runningBalance += $amount;
-                $transaction->transaction_type_display = 'debit';
-            } elseif ($type == 'payment' || $type == 'credit') {
-                $runningBalance -= $amount;
-                $transaction->transaction_type_display = 'credit';
-            } elseif ($type == 'balance') {
-                $runningBalance = $amount;
-                $transaction->transaction_type_display = $amount > 0 ? 'credit' : 'debit';
+            if (!$customer) {
+                return redirect()->route('customers.list')->with('error', 'Customer not found');
             }
-            $transaction->current_balance = $runningBalance;
-        }
 
-        // Fetch Company Settings
-        $companySettings = null;
-        if (Schema::hasTable('companies')) {
-            $companySettings = DB::table('companies')->first();
-        }
-        
-        if (!$companySettings) {
-            $companySettings = (object)[
-                'name' => 'Food Impex',
-                'logo' => null,
-                'address' => 'Main Road, Sialkot, Pakistan',
-                'mobile' => '+92 300 0000000',
-            ];
-        }
+            // Get request filters
+            $bill_from = request()->bill_from;
+            $bill_to = request()->bill_to;
+            $trans_from = request()->trans_from;
+            $trans_to = request()->trans_to;
 
-        return view('admin.pages.customers.bank-statement-pdf 2', compact(
-            'customer',
-            'allTransactions',
-            'companySettings',
-            'trans_from',
-            'trans_to'
-        ));
+            // Get ONLY customer transactions
+            $transactionsQuery = $customer->customerTransactions();
+            
+            // Apply date filters to transactions
+            if ($trans_from && $trans_to) {
+                $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
+            } elseif ($trans_from) {
+                $transactionsQuery->where('transaction_date', '>=', $trans_from);
+            } elseif ($trans_to) {
+                $transactionsQuery->where('transaction_date', '<=', $trans_to);
+            }
+            
+            // Get transactions ordered by date (ASCENDING for statement - oldest first)
+            $allTransactions = $transactionsQuery->orderBy('transaction_date', 'ASC')
+                ->orderBy('id', 'ASC')
+                ->get();
 
-    } catch (\Exception $e) {
-        \Log::error('Bank Statement Error: ' . $e->getMessage());
-        return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
+            // Calculate running balance correctly
+            $runningBalance = 0;
+            $transactionsWithBalance = [];
+            
+            foreach ($allTransactions as $transaction) {
+                $amount = floatval($transaction->amount);
+                $type = $transaction->type;
+                
+                // For Customer:
+                // - Debit (bill, debit) = Customer owes more → Balance INCREASES
+                // - Credit (payment, credit) = Customer pays → Balance DECREASES
+                if ($type == 'bill' || $type == 'debit') {
+                    $runningBalance += $amount;
+                } elseif ($type == 'payment' || $type == 'credit') {
+                    $runningBalance -= $amount;
+                } elseif ($type == 'balance') {
+                    // Opening Balance - set the initial balance
+                    $runningBalance = $amount;
+                }
+                
+                // Store the running balance in the transaction object
+                $transaction->running_balance = $runningBalance;
+                $transactionsWithBalance[] = $transaction;
+            }
+
+            // Fetch Company Settings
+            $companySettings = null;
+            if (Schema::hasTable('companies')) {
+                $companySettings = DB::table('companies')->first();
+            }
+            
+            if (!$companySettings) {
+                $companySettings = (object)[
+                    'name' => 'Food Impex',
+                    'logo' => null,
+                    'address' => 'Main Road, Sialkot, Pakistan',
+                    'mobile' => '+92 300 0000000',
+                ];
+            }
+
+            return view('admin.pages.customers.bank-statement-pdf', compact(
+                'customer',
+                'transactionsWithBalance',
+                'companySettings',
+                'trans_from',
+                'trans_to'
+            ));
+
+        } catch (\Exception $e) {
+            \Log::error('Bank Statement Error: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
+        }
     }
-}
-/**
- * Generate Bank Statement PDF - Same logic as view page (NO duplicates)
- */
-public function bankStatementPdf($uuid)
-{
-    try {
-        $customer = Customer::where('uuid', $uuid)->first();
-        
-        if (!$customer) {
-            return redirect()->route('customers.list')->with('error', 'Customer not found');
+
+    /**
+     * Generate Bank Statement PDF - Download
+     */
+    public function bankStatementPdf($uuid)
+    {
+        try {
+            $customer = Customer::where('uuid', $uuid)->first();
+            
+            if (!$customer) {
+                return redirect()->route('customers.list')->with('error', 'Customer not found');
+            }
+
+            // Get request filters
+            $bill_from = request()->bill_from;
+            $bill_to = request()->bill_to;
+            $trans_from = request()->trans_from;
+            $trans_to = request()->trans_to;
+
+            // Get ONLY customer transactions
+            $transactionsQuery = $customer->customerTransactions();
+            
+            // Apply date filters to transactions
+            if ($trans_from && $trans_to) {
+                $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
+            } elseif ($trans_from) {
+                $transactionsQuery->where('transaction_date', '>=', $trans_from);
+            } elseif ($trans_to) {
+                $transactionsQuery->where('transaction_date', '<=', $trans_to);
+            }
+            
+            // Get transactions ordered by date (ASCENDING for statement - oldest first)
+            $allTransactions = $transactionsQuery->orderBy('transaction_date', 'ASC')
+                ->orderBy('id', 'ASC')
+                ->get();
+
+            // Calculate running balance correctly
+            $runningBalance = 0;
+            $transactionsWithBalance = [];
+            
+            foreach ($allTransactions as $transaction) {
+                $amount = floatval($transaction->amount);
+                $type = $transaction->type;
+                
+                if ($type == 'bill' || $type == 'debit') {
+                    $runningBalance += $amount;
+                } elseif ($type == 'payment' || $type == 'credit') {
+                    $runningBalance -= $amount;
+                } elseif ($type == 'balance') {
+                    $runningBalance = $amount;
+                }
+                
+                // Store the running balance in the transaction object
+                $transaction->running_balance = $runningBalance;
+                $transactionsWithBalance[] = $transaction;
+            }
+
+            // Fetch Company Settings
+            $companySettings = null;
+            if (Schema::hasTable('companies')) {
+                $companySettings = DB::table('companies')->first();
+            }
+            
+            if (!$companySettings) {
+                $companySettings = (object)[
+                    'name' => 'Food Impex',
+                    'logo' => null,
+                    'address' => 'Main Road, Sialkot, Pakistan',
+                    'mobile' => '+92 300 0000000',
+                ];
+            }
+
+            $pdf = Pdf::loadView('admin.pages.customers.bank-statement-pdf', compact(
+                'customer',
+                'transactionsWithBalance',
+                'companySettings',
+                'trans_from',
+                'trans_to'
+            ));
+
+            return $pdf->download('customer-statement-' . preg_replace('/[^A-Za-z0-9-]/', '', $customer->name) . '.pdf');
+
+        } catch (\Exception $e) {
+            \Log::error('Bank Statement PDF Error: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return redirect()->back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
         }
-
-        // Get request filters
-        $bill_from = request()->bill_from;
-        $bill_to = request()->bill_to;
-        $trans_from = request()->trans_from;
-        $trans_to = request()->trans_to;
-
-        // Get ONLY customer transactions (same as view page - NO daybook entries separately)
-        $transactionsQuery = $customer->customerTransactions();
-        
-        // Apply date filters to transactions
-        if ($trans_from && $trans_to) {
-            $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-        } elseif ($trans_from) {
-            $transactionsQuery->where('transaction_date', '>=', $trans_from);
-        } elseif ($trans_to) {
-            $transactionsQuery->where('transaction_date', '<=', $trans_to);
-        }
-        
-        // Get transactions ordered by date (newest first for display)
-        $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
-            ->orderBy('id', 'DESC')
-            ->get();
-
-        // Fetch Company Settings
-        $companySettings = null;
-        if (Schema::hasTable('companies')) {
-            $companySettings = DB::table('companies')->first();
-        }
-        
-        if (!$companySettings) {
-            $companySettings = (object)[
-                'name' => 'Food Impex',
-                'logo' => null,
-                'address' => 'Main Road, Sialkot, Pakistan',
-                'mobile' => '+92 300 0000000',
-            ];
-        }
-
-        $pdf = Pdf::loadView('admin.pages.customers.bank-statement-pdf', compact(
-            'customer',
-            'customerTransactions',
-            'companySettings',
-            'trans_from',
-            'trans_to'
-        ));
-
-        return $pdf->download('customer-statement-' . preg_replace('/[^A-Za-z0-9-]/', '', $customer->name) . '.pdf');
-
-    } catch (\Exception $e) {
-        \Log::error('Bank Statement PDF Error: ' . $e->getMessage());
-        \Log::error($e->getTraceAsString());
-        return redirect()->back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
     }
-}
    
 }

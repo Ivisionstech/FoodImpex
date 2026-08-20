@@ -14,6 +14,26 @@
             background-color: #fff;
         }
 
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                padding: 10px;
+            }
+            .transactions-table th { 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+            }
+            .col-debit { background-color: #ffcccc !important; }
+            .col-credit { background-color: #ccffcc !important; }
+            .col-balance { background-color: #ffecb3 !important; }
+            .badge-type, .badge-pending, .badge-approved {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+
         .header {
             text-align: center;
             padding-bottom: 20px;
@@ -102,6 +122,9 @@
             font-weight: bold;
         }
 
+        .amount-debit { color: #dc3545 !important; }
+        .amount-credit { color: #28a745 !important; }
+
         .dr-cr-cell {
             text-align: center !important;
             font-weight: bold;
@@ -124,67 +147,135 @@
             display: block;
             margin-top: 2px;
             border-top: 1px dotted #ccc;
+            padding-top: 2px;
         }
 
-        .negative-balance {
-            color: #dc3545;
-            font-weight: bold;
-        }
-
-        .positive-balance {
-            color: #28a745;
-            font-weight: bold;
-        }
-
-        .badge {
+        .badge-type {
             display: inline-block;
             padding: 2px 6px;
-            font-size: 8px;
+            font-size: 9px;
             font-weight: bold;
             border-radius: 3px;
-            margin-top: 3px;
+            margin-right: 5px;
         }
-        
+
+        .badge-payment { background-color: #dc3545; color: white; }
+        .badge-balance { background-color: #17a2b8; color: white; }
+        .badge-return { background-color: #dc3545; color: white; }
+        .badge-general { background-color: #6c757d; color: white; }
         .badge-debit { background-color: #dc3545; color: white; }
         .badge-credit { background-color: #28a745; color: white; }
-        .badge-sales { background-color: #dc3545; color: white; }
-        .badge-payment { background-color: #28a745; color: white; }
+        .badge-pending { background-color: #ffc107; color: #333; }
+        .badge-approved { background-color: #28a745; color: white; }
+        .badge-batch { background-color: #6f42c1; color: white; }
 
-        .summary-section {
-            margin-top: 20px;
-            padding: 15px;
-            border: 2px solid #000;
-            background-color: #f8f9fa;
-        }
-
-        .summary-title {
+        /* Button Styles */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 20px;
+            margin: 5px;
             font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 10px;
+            font-weight: 600;
             text-align: center;
-            background-color: #d3d3d3;
-            padding: 5px;
+            text-decoration: none;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            gap: 8px;
+            min-width: 100px;
         }
 
-        .summary-row {
+        .btn-print {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+        .btn-print:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.5);
+        }
+
+        .btn-back {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
+        }
+        .btn-back:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.5);
+        }
+
+        .btn-download {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: #333;
+            box-shadow: 0 4px 15px rgba(67, 233, 123, 0.4);
+        }
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(67, 233, 123, 0.5);
+        }
+
+        .action-buttons {
             display: flex;
             justify-content: space-between;
-            padding: 5px 10px;
-            font-size: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+            flex-wrap: wrap;
         }
 
-        .summary-label {
+        .action-buttons .left-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .action-buttons .right-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .action-buttons .btn {
+            min-width: 120px;
+        }
+
+        @media (max-width: 768px) {
+            .action-buttons {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .action-buttons .left-group,
+            .action-buttons .right-group {
+                flex-direction: column;
+                width: 100%;
+            }
+            .action-buttons .btn {
+                width: 100%;
+                margin: 5px 0;
+            }
+        }
+
+        /* Balance DR/CR Badge */
+        .balance-dr {
+            color: #dc3545 !important;
             font-weight: bold;
         }
-
-        .summary-value {
+        .balance-cr {
+            color: #28a745 !important;
             font-weight: bold;
         }
-
-        @media print {
-            body { padding: 0; }
-            .transactions-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
+        
+        .text-dr { color: #dc3545 !important; font-weight: bold; }
+        .text-cr { color: #28a745 !important; font-weight: bold; }
+        .badge-dr { background-color: #dc3545; color: white; }
+        .badge-cr { background-color: #28a745; color: white; }
     </style>
 </head>
 
@@ -206,61 +297,48 @@
             $logoSrc = 'data:image/' . pathinfo($logoPath, PATHINFO_EXTENSION) . ';base64,' . $logoData;
         }
         
-        // Use $allTransactions (passed from controller)
-        $transactions = $allTransactions ?? collect();
+        // =============================================
+        // USE transactionsWithBalance from controller
+        // =============================================
+        $transactions = collect($transactionsWithBalance ?? []);
         
-        // Sort transactions in ASCENDING order for correct running balance (oldest first)
-        $sortedTransactions = $transactions->sortBy(function($transaction) {
+        // Reverse for display (newest first)
+        $transactionsWithBalance = $transactions->sortByDesc(function($transaction) {
             return $transaction->transaction_date;
         })->values();
         
-        $runningBalance = 0;
-        $transactionsWithBalance = [];
-        
-        foreach ($sortedTransactions as $transaction) {
-            $amount = floatval($transaction->amount);
-            $type = $transaction->type;
-            
-            // Determine if this is DEBIT or CREDIT for balance calculation
-            // DEBIT = Customer owes us (Sales/Bill/Debit) - INCREASES what customer owes
-            // CREDIT = Customer paid us (Payment/Credit) - DECREASES what customer owes
-            if ($type == 'bill' || $type == 'debit') {
-                $runningBalance += $amount;
-            } elseif ($type == 'payment' || $type == 'credit') {
-                $runningBalance -= $amount;
-            } elseif ($type == 'balance') {
-                $runningBalance = $amount;
-            }
-            
-            // Store transaction with calculated balance as object
-            $transactionsWithBalance[] = (object)[
-                'transaction' => $transaction,
-                'current_balance' => $runningBalance,  // Same as view file variable name
-                'type' => $type,
-                'amount' => $amount
-            ];
+        // Build back URL with filters
+        $backUrl = route('customers.view', ['uuid' => $customer->uuid]);
+        $params = [];
+        if (isset($trans_from) && $trans_from) $params['trans_from'] = $trans_from;
+        if (isset($trans_to) && $trans_to) $params['trans_to'] = $trans_to;
+        if (!empty($params)) {
+            $backUrl .= '?' . http_build_query($params);
         }
         
-        // Now reverse for display (newest first)
-        $transactionsWithBalance = array_reverse($transactionsWithBalance);
-        
-        // Calculate summary totals
-        $totalDebits = 0;
-        $totalCredits = 0;
-        
-        foreach($sortedTransactions as $transaction) {
-            $amount = floatval($transaction->amount);
-            $type = $transaction->type;
-            
-            if ($type == 'bill' || $type == 'debit') {
-                $totalDebits += $amount;
-            } elseif ($type == 'payment' || $type == 'credit') {
-                $totalCredits += $amount;
-            }
+        // Build download URL with filters
+        $downloadUrl = route('customers.bank-statement-pdf', ['uuid' => $customer->uuid]);
+        if (!empty($params)) {
+            $downloadUrl .= '?' . http_build_query($params);
         }
-        
-        $netBalance = $totalDebits - $totalCredits;
     @endphp
+
+    <!-- Action Buttons - Hidden when printing -->
+    <div class="action-buttons no-print">
+        <div class="left-group">
+            <a href="{{ $backUrl }}" class="btn btn-back">
+                <span class="icon">←</span> Back
+            </a>
+        </div>
+        <div class="right-group">
+            <a href="{{ $downloadUrl }}" class="btn btn-download">
+                <span class="icon">⬇</span> Download PDF
+            </a>
+            <button onclick="window.print()" class="btn btn-print">
+                <span class="icon">🖨</span> Print
+            </button>
+        </div>
+    </div>
 
     <div class="header">
         <div class="logo-container">
@@ -275,7 +353,7 @@
     </div>
 
     <div class="statement-title">
-        ACCOUNTS STATEMENT LEDGER
+        CUSTOMER LEDGER
     </div>
 
     <div class="customer-details">
@@ -284,13 +362,13 @@
         <div style="font-size: 12px; margin-top: 5px;">PHONE: {{ $customer->phone ?? 'N/A' }}</div>
         <div style="font-size: 13px; margin-top: 8px; font-weight: bold;">
             Current Balance: 
-            <span class="{{ ($customer->balance ?? 0) < 0 ? 'negative-balance' : 'positive-balance' }}">
+            <span style="color: {{ ($customer->balance ?? 0) < 0 ? '#dc3545' : '#28a745' }}">
                 PKR {{ number_format(abs($customer->balance ?? 0), 2) }} {{ ($customer->balance ?? 0) < 0 ? 'DR' : 'CR' }}
             </span>
         </div>
     </div>
 
-   <table class="transactions-table">
+    <table class="transactions-table">
         <thead>
             <tr>
                 <th rowspan="2" class="col-srno">SR.<br>NO</th>
@@ -306,14 +384,16 @@
             </tr>
         </thead>
         <tbody>
-            @forelse($transactionsWithBalance as $index => $item)
+            @forelse($transactionsWithBalance as $index => $transaction)
                 @php
-                    $transaction = $item->transaction;
-                    $type = $item->type;
-                    $amount = $item->amount;
-                    // SAME LOGIC AS VIEW FILE - using current_balance
-                    $currentBalance = $item->current_balance;
+                    $type = $transaction->type;
+                    $amount = floatval($transaction->amount);
                     $description = $transaction->description ?? '';
+                    
+                    // =============================================
+                    // FIXED: Use running_balance from controller
+                    // =============================================
+                    $currentBalance = isset($transaction->running_balance) ? floatval($transaction->running_balance) : 0;
                     
                     $debitAmount = 0;
                     $creditAmount = 0;
@@ -321,27 +401,36 @@
                     $badgeClass = '';
                     $badgeText = '';
                     $descriptionText = '';
+                    $drCrType = '';
                     
+                    // =============================================
+                    // DR/CR LOGIC
+                    // =============================================
                     if ($type == 'bill' || $type == 'debit') {
                         $debitAmount = $amount;
                         $displayType = $type == 'bill' ? 'Sales Invoice' : 'Debit Entry';
                         $badgeClass = 'badge-debit';
                         $badgeText = $type == 'bill' ? 'SALES' : 'DEBIT';
+                        $drCrType = 'DR';
                         $descriptionText = $description ?: ($type == 'bill' ? 'Sales invoice' : 'Debit transaction');
                     } elseif ($type == 'payment' || $type == 'credit') {
                         $creditAmount = $amount;
                         $displayType = $type == 'payment' ? 'Payment Received' : 'Credit Entry';
                         $badgeClass = 'badge-credit';
                         $badgeText = $type == 'payment' ? 'PAYMENT' : 'CREDIT';
+                        $drCrType = 'CR';
                         $descriptionText = $description ?: ($type == 'payment' ? 'Payment received' : 'Credit transaction');
                     } elseif ($type == 'balance') {
+                        // Opening Balance
                         if ($amount > 0) {
                             $creditAmount = $amount;
+                            $drCrType = 'CR';
                             $displayType = 'Opening Balance (Credit)';
                             $badgeClass = 'badge-credit';
                             $badgeText = 'OPENING CR';
                         } else {
                             $debitAmount = abs($amount);
+                            $drCrType = 'DR';
                             $displayType = 'Opening Balance (Debit)';
                             $badgeClass = 'badge-debit';
                             $badgeText = 'OPENING DR';
@@ -350,11 +439,13 @@
                     } else {
                         if ($amount > 0) {
                             $creditAmount = $amount;
+                            $drCrType = 'CR';
                             $displayType = 'Credit Entry';
                             $badgeClass = 'badge-credit';
                             $badgeText = 'CREDIT';
                         } else {
                             $debitAmount = abs($amount);
+                            $drCrType = 'DR';
                             $displayType = 'Debit Entry';
                             $badgeClass = 'badge-debit';
                             $badgeText = 'DEBIT';
@@ -362,13 +453,11 @@
                         $descriptionText = $description ?: ucfirst($type);
                     }
                     
-                    // SAME DR/CR LOGIC AS VIEW FILE
-                    // View file uses: {{ $transaction->current_balance >= 0 ? 'DR' : 'CR' }}
-                    // When current_balance >= 0, it shows "DR" (Customer owes money)
-                    // When current_balance < 0, it shows "CR" (Customer has credit)
-                    $balanceDisplay = number_format(abs($currentBalance), 2);
-                    $drCrDisplay = $currentBalance >= 0 ? 'DR' : 'CR';
-                    $balanceClass = $currentBalance < 0 ? 'positive-balance' : 'negative-balance';
+                    // =============================================
+                    // CURRENT BALANCE - Negative = DR, Positive = CR
+                    // =============================================
+                    $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
+                    $balanceClass = $currentBalance < 0 ? 'balance-dr' : 'balance-cr';
                     $transactionDate = $transaction->transaction_date ?? $transaction->date ?? $transaction->created_at ?? now();
                 @endphp
                 <tr>
@@ -380,13 +469,15 @@
                         </div>
                     </td>
                     <td>
+                        <span class="badge-type {{ $badgeClass }}">{{ $badgeText }}</span>
                         <strong>{{ $displayType }}</strong>
                         @if($descriptionText && $descriptionText != $displayType)
                             <div class="item-desc">{{ $descriptionText }}</div>
                         @endif
-                        <span class="badge {{ $badgeClass }}">{{ $badgeText }}</span>
+                        <br>
+                        <span class="badge badge-approved" style="font-size: 8px; padding: 2px 6px; background-color: #28a745; color: white;">Approved</span>
                     </td>
-                    <!-- DEBIT Column - Sales/Bills/Debit entries -->
+                    <!-- DEBIT Column -->
                     <td class="amount-debit">
                         @if($debitAmount > 0)
                             {{ number_format($debitAmount, 2) }}
@@ -394,7 +485,7 @@
                             —
                         @endif
                     </td>
-                    <!-- CREDIT Column - Payments received/Credit entries -->
+                    <!-- CREDIT Column -->
                     <td class="amount-credit">
                         @if($creditAmount > 0)
                             {{ number_format($creditAmount, 2) }}
@@ -402,13 +493,13 @@
                             —
                         @endif
                     </td>
-                    <!-- DR/CR Column - SAME LOGIC AS VIEW FILE -->
-                    <td class="dr-cr-cell">
-                        {{ $drCrDisplay }}
+                    <!-- DR/CR Column -->
+                    <td class="dr-cr-cell {{ $drCrType == 'DR' ? 'text-danger' : 'text-success' }}">
+                        {{ $drCrType }}
                     </td>
-                    <!-- BALANCE Column - SAME LOGIC AS VIEW FILE -->
+                    <!-- BALANCE Column - Shows the account balance after this transaction -->
                     <td class="balance {{ $balanceClass }}">
-                        {{ $balanceDisplay }} {{ $drCrDisplay }}
+                        {{ number_format(abs($currentBalance), 2) }} {{ $drCrDisplay }}
                     </td>
                 </tr>
             @empty
@@ -419,38 +510,17 @@
         </tbody>
     </table>
 
-    <!-- Summary Section -->
-    <div class="summary-section">
-        <div class="summary-title">STATEMENT SUMMARY</div>
-        <div class="summary-row">
-            <span class="summary-label">Total Debits (Sales / Outward):</span>
-            <span class="summary-value" style="color: #dc3545;">PKR {{ number_format($totalDebits, 2) }}</span>
-        </div>
-        <div class="summary-row">
-            <span class="summary-label">Total Credits (Payments / Inward):</span>
-            <span class="summary-value" style="color: #28a745;">PKR {{ number_format($totalCredits, 2) }}</span>
-        </div>
-        <div class="summary-row">
-            <span class="summary-label">Net Balance:</span>
-            <span class="summary-value {{ $netBalance >= 0 ? 'negative-balance' : 'positive-balance' }}">
-                PKR {{ number_format(abs($netBalance), 2) }} {{ $netBalance >= 0 ? 'DR' : 'CR' }}
-            </span>
-        </div>
-        <div class="summary-row">
-            <span class="summary-label">Total Transactions:</span>
-            <span class="summary-value">{{ count($transactionsWithBalance) }}</span>
-        </div>
-    </div>
-
     <div class="footer">
-        <p>This statement contains {{ count($transactionsWithBalance) }} transaction(s) in chronological order.</p>
+        <p>This ledger contains {{ count($transactionsWithBalance) }} transaction(s) in chronological order.</p>
         <p><strong>{{ $companySettings->name ?? 'Food Impex' }}</strong> - Generated on {{ now()->format('F j, Y \a\t g:i A') }}</p>
         <p style="font-size: 10px; color: #999;">* This is a system-generated document. No signature required. *</p>
     </div>
 
     <script>
         window.onload = function() {
-            // window.print();
+            if (window.location.search.includes('print=true')) {
+                window.print();
+            }
         };
     </script>
 </body>
