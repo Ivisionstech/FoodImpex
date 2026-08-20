@@ -474,92 +474,95 @@ class CustomerController extends Controller
     /**
      * Display Bank Statement as HTML - View in Browser
      */
-    public function bankStatement($uuid)
-    {
-        try {
-            $customer = Customer::where('uuid', $uuid)->first();
-            
-            if (!$customer) {
-                return redirect()->route('customers.list')->with('error', 'Customer not found');
-            }
-
-            // Get request filters
-            $bill_from = request()->bill_from;
-            $bill_to = request()->bill_to;
-            $trans_from = request()->trans_from;
-            $trans_to = request()->trans_to;
-
-            // Get ONLY customer transactions
-            $transactionsQuery = $customer->customerTransactions();
-            
-            // Apply date filters to transactions
-            if ($trans_from && $trans_to) {
-                $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
-            } elseif ($trans_from) {
-                $transactionsQuery->where('transaction_date', '>=', $trans_from);
-            } elseif ($trans_to) {
-                $transactionsQuery->where('transaction_date', '<=', $trans_to);
-            }
-            
-            // Get transactions ordered by date (ASCENDING for statement - oldest first)
-            $allTransactions = $transactionsQuery->orderBy('transaction_date', 'ASC')
-                ->orderBy('id', 'ASC')
-                ->get();
-
-            // Calculate running balance correctly
-            $runningBalance = 0;
-            $transactionsWithBalance = [];
-            
-            foreach ($allTransactions as $transaction) {
-                $amount = floatval($transaction->amount);
-                $type = $transaction->type;
-                
-                // For Customer:
-                // - Debit (bill, debit) = Customer owes more → Balance INCREASES
-                // - Credit (payment, credit) = Customer pays → Balance DECREASES
-                if ($type == 'bill' || $type == 'debit') {
-                    $runningBalance += $amount;
-                } elseif ($type == 'payment' || $type == 'credit') {
-                    $runningBalance -= $amount;
-                } elseif ($type == 'balance') {
-                    // Opening Balance - set the initial balance
-                    $runningBalance = $amount;
-                }
-                
-                // Store the running balance in the transaction object
-                $transaction->running_balance = $runningBalance;
-                $transactionsWithBalance[] = $transaction;
-            }
-
-            // Fetch Company Settings
-            $companySettings = null;
-            if (Schema::hasTable('companies')) {
-                $companySettings = DB::table('companies')->first();
-            }
-            
-            if (!$companySettings) {
-                $companySettings = (object)[
-                    'name' => 'Food Impex',
-                    'logo' => null,
-                    'address' => 'Main Road, Sialkot, Pakistan',
-                    'mobile' => '+92 300 0000000',
-                ];
-            }
-
-            return view('admin.pages.customers.bank-statement-pdf', compact(
-                'customer',
-                'transactionsWithBalance',
-                'companySettings',
-                'trans_from',
-                'trans_to'
-            ));
-
-        } catch (\Exception $e) {
-            \Log::error('Bank Statement Error: ' . $e->getMessage());
-            \Log::error($e->getTraceAsString());
-            return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
+    /**
+ * Display Bank Statement as HTML - View in Browser
+ */
+public function bankStatement($uuid)
+{
+    try {
+        $customer = Customer::where('uuid', $uuid)->first();
+        
+        if (!$customer) {
+            return redirect()->route('customers.list')->with('error', 'Customer not found');
         }
+
+        // Get request filters
+        $bill_from = request()->bill_from;
+        $bill_to = request()->bill_to;
+        $trans_from = request()->trans_from;
+        $trans_to = request()->trans_to;
+
+        // Get ONLY customer transactions
+        $transactionsQuery = $customer->customerTransactions();
+        
+        // Apply date filters to transactions
+        if ($trans_from && $trans_to) {
+            $transactionsQuery->whereBetween('transaction_date', [$trans_from, $trans_to]);
+        } elseif ($trans_from) {
+            $transactionsQuery->where('transaction_date', '>=', $trans_from);
+        } elseif ($trans_to) {
+            $transactionsQuery->where('transaction_date', '<=', $trans_to);
+        }
+        
+        // Get transactions ordered by date (ASCENDING for statement - oldest first)
+        $allTransactions = $transactionsQuery->orderBy('transaction_date', 'ASC')
+            ->orderBy('id', 'ASC')
+            ->get();
+
+        // Calculate running balance correctly
+        $runningBalance = 0;
+        $transactionsWithBalance = [];
+        
+        foreach ($allTransactions as $transaction) {
+            $amount = floatval($transaction->amount);
+            $type = $transaction->type;
+            
+            // For Customer:
+            // - Debit (bill, debit) = Customer owes more → Balance INCREASES
+            // - Credit (payment, credit) = Customer pays → Balance DECREASES
+            if ($type == 'bill' || $type == 'debit') {
+                $runningBalance += $amount;
+            } elseif ($type == 'payment' || $type == 'credit') {
+                $runningBalance -= $amount;
+            } elseif ($type == 'balance') {
+                // Opening Balance - set the initial balance
+                $runningBalance = $amount;
+            }
+            
+            // Store the running balance directly in the transaction
+            $transaction->running_balance = $runningBalance;
+            $transactionsWithBalance[] = $transaction;
+        }
+
+        // Fetch Company Settings
+        $companySettings = null;
+        if (Schema::hasTable('companies')) {
+            $companySettings = DB::table('companies')->first();
+        }
+        
+        if (!$companySettings) {
+            $companySettings = (object)[
+                'name' => 'Food Impex',
+                'logo' => null,
+                'address' => 'Main Road, Sialkot, Pakistan',
+                'mobile' => '+92 300 0000000',
+            ];
+        }
+
+        return view('admin.pages.customers.bank-statement-pdf', compact(
+            'customer',
+            'transactionsWithBalance',
+            'companySettings',
+            'trans_from',
+            'trans_to'
+        ));
+
+    } catch (\Exception $e) {
+        \Log::error('Bank Statement Error: ' . $e->getMessage());
+        \Log::error($e->getTraceAsString());
+        return redirect()->back()->with('error', 'Failed to load statement: ' . $e->getMessage());
     }
+}
 
     /**
      * Generate Bank Statement PDF - Download
