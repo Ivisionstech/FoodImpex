@@ -85,6 +85,16 @@
             background-color: #6f42c1;
             color: white;
         }
+        
+        /* Status Badge Colors */
+        .badge-approved {
+            background-color: #28a745 !important;
+            color: white !important;
+        }
+        .badge-pending {
+            background-color: #ffc107 !important;
+            color: #333 !important;
+        }
     </style>
 
     <div class="container-xxl flex-grow-1 container-p-y">
@@ -163,17 +173,13 @@
                             </div>
                             <div class="col-md-8">
                                 @php
-                                    $lastTransaction = $customer->customerTransactions()
-                                        ->where('approval_status', 'approved')
-                                        ->orderBy('transaction_date', 'DESC')
-                                        ->orderBy('id', 'DESC')
-                                        ->first();
-                                    
-                                    $balance = $lastTransaction ? floatval($lastTransaction->current_balance ?? 0) : 0;
-                                    $balanceClass = $balance >= 0 ? 'bg-label-danger' : 'bg-label-success';
-                                    $balanceLabel = $balance >= 0 ? 'DR' : 'CR';
+                                    // Use vendor->balance directly (same as list page)
+                                    $balance = floatval($customer->balance ?? 0);
+                                    // Negative = DR (Red), Positive = CR (Green)
+                                    $balanceClass = $balance < 0 ? 'bg-label-danger' : 'bg-label-success';
+                                    $balanceLabel = $balance < 0 ? 'DR' : 'CR';
                                 @endphp
-                                <span class="badge {{ $balanceClass }}">
+                                <span class="badge {{ $balanceClass }}" style="font-size: 14px; padding: 6px 14px;">
                                     PKR {{ number_format(abs($balance), 0) }} {{ $balanceLabel }}
                                 </span>
                                 <small class="text-muted">(Approved Only)</small>
@@ -257,7 +263,7 @@
             </div>
         </div>
         
-        <!-- Customer Bank Statement Section with General Entries -->
+        <!-- Customer Ledger Section - Only General Entries (No Bills) -->
         <div class="card mt-5">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0">Customer Ledger</h5>
@@ -303,11 +309,18 @@
                         @forelse ($customerTransactions as $transaction)
                             @php
                                 $type = strtolower($transaction->type ?? '');
+                                
+                                // SKIP BILL TYPE TRANSACTIONS - Don't display bills in ledger
+                                if ($type == 'bill') {
+                                    continue;
+                                }
+                                
                                 $amount = floatval($transaction->amount ?? 0);
                                 $description = $transaction->description ?? '';
-                                $approvalStatus = $transaction->approval_status ?? 'approved';
+                                $approvalStatus = $transaction->approval_status ?? 'pending';
                                 $isApproved = ($approvalStatus == 'approved');
                                 $currentBalance = floatval($transaction->current_balance ?? 0);
+                                $transactionType = $transaction->transaction_type ?? '';
                                 
                                 $isGeneralEntry = in_array($type, ['general', 'general_debit', 'general_credit', 'transaction', 'daybook', '']);
                                 $isOpeningBalance = ($type == 'balance' && stripos($description, 'Opening Balance') !== false);
@@ -335,8 +348,11 @@
                                 $statusText = '';
                                 $rowClass = '';
                                 
-                                // Status Badge
-                                if ($isApproved) {
+                                // Status Badge - Opening Balance is always APPROVED
+                                if ($isOpeningBalance) {
+                                    $statusBadge = 'badge-approved';
+                                    $statusText = 'Approved';
+                                } elseif ($isApproved) {
                                     $statusBadge = 'badge-approved';
                                     $statusText = 'Approved';
                                 } else {
@@ -349,15 +365,10 @@
                                     $rowClass = 'batch-entry-row';
                                 }
                                 
-                                // Determine type
-                                if ($type == 'bill') {
-                                    $displayType = 'Sales Invoice';
-                                    $badgeClass = 'badge-bill';
-                                    $badgeText = 'SALES';
-                                    $amountClass = 'text-dr';
-                                    $transactionTypeDisplay = 'DR';
-                                    $descriptionText = $description ?: 'Sales invoice';
-                                } elseif ($type == 'payment') {
+                                // =============================================
+                                // TYPE DETERMINATION - EXCLUDING BILLS
+                                // =============================================
+                                if ($type == 'payment') {
                                     $displayType = 'Payment Received';
                                     $badgeClass = 'badge-payment';
                                     $badgeText = 'PAYMENT';
@@ -368,11 +379,17 @@
                                         $descriptionText .= ' via ' . ucfirst($transaction->method);
                                     }
                                 } elseif ($isOpeningBalance) {
+                                    // Opening Balance - Always Approved
                                     $displayType = 'Opening Balance';
                                     $badgeClass = 'badge-balance';
                                     $badgeText = 'OPENING';
                                     $amountClass = 'text-info';
-                                    $transactionTypeDisplay = $amount > 0 ? 'CR' : 'DR';
+                                    // Use transaction_type to determine DR/CR
+                                    if ($transactionType == 'credit' || $amount > 0) {
+                                        $transactionTypeDisplay = 'CR';
+                                    } else {
+                                        $transactionTypeDisplay = 'DR';
+                                    }
                                     $descriptionText = 'Opening Balance';
                                 } elseif ($isGeneralEntry) {
                                     $displayType = 'General Entry';
@@ -380,10 +397,10 @@
                                     $badgeText = $hasBatch ? 'BATCH (' . $batchCount . ')' : 'GENERAL';
                                     $amountClass = 'text-primary';
                                     
-                                    if ($type == 'general_debit' || $amount < 0) {
-                                        $transactionTypeDisplay = 'DR';
-                                    } elseif ($type == 'general_credit' || $amount > 0) {
+                                    if ($transactionType == 'credit' || $amount > 0) {
                                         $transactionTypeDisplay = 'CR';
+                                    } elseif ($transactionType == 'debit' || $amount < 0) {
+                                        $transactionTypeDisplay = 'DR';
                                     } else {
                                         $transactionTypeDisplay = $amount > 0 ? 'CR' : 'DR';
                                     }
@@ -402,6 +419,13 @@
                                     $amountClass = 'text-cr';
                                     $transactionTypeDisplay = 'CR';
                                     $descriptionText = $description ?: 'Credit transaction';
+                                } elseif ($type == 'balance') {
+                                    $displayType = 'Balance Entry';
+                                    $badgeClass = 'badge-balance';
+                                    $badgeText = 'BALANCE';
+                                    $amountClass = 'text-info';
+                                    $transactionTypeDisplay = $amount > 0 ? 'CR' : 'DR';
+                                    $descriptionText = $description ?: 'Balance adjustment';
                                 } else {
                                     $displayType = ucfirst($type) ?: 'Entry';
                                     $badgeClass = 'badge-general';
@@ -411,9 +435,11 @@
                                     $descriptionText = $description ?: $displayType;
                                 }
                                 
-                                // Current Balance DR/CR
-                                $drCrDisplay = $currentBalance >= 0 ? 'DR' : 'CR';
-                                $balanceClass = $currentBalance >= 0 ? 'balance-dr' : 'balance-cr';
+                                // =============================================
+                                // CURRENT BALANCE - Negative = DR (Red), Positive = CR (Green)
+                                // =============================================
+                                $drCrDisplay = $currentBalance < 0 ? 'DR' : 'CR';
+                                $balanceClass = $currentBalance < 0 ? 'balance-dr' : 'balance-cr';
                                 $typeBadgeClass = $transactionTypeDisplay == 'DR' ? 'badge-dr' : 'badge-cr';
                             @endphp
                             <tr class="{{ $rowClass }}">
@@ -445,7 +471,7 @@
                                     @endif
                                     <br>
                                     <span class="badge {{ $statusBadge }}">{{ $statusText }}</span>
-                                    @if(!$isApproved)
+                                    @if(!$isApproved && !$isOpeningBalance)
                                         <span class="text-warning" style="font-size: 10px;">(Not affecting balance)</span>
                                     @endif
                                     
@@ -556,26 +582,12 @@
                                         PKR {{ number_format(abs($currentBalance), 0) }}
                                         <small>{{ $drCrDisplay }}</small>
                                     </span>
-                                    @if(!$isApproved)
+                                    @if(!$isApproved && !$isOpeningBalance)
                                         <br><small class="text-warning">(Pending - Not affecting balance)</small>
                                     @endif
                                 </td>
                                 <td class="text-center">
-                                    @if ($type == 'bill')
-                                        @if (isset($transaction->bill->type) && ($transaction->bill->type ?? null) === 'new bill')
-                                            <a href="{{ route('new.bills.show', $transaction->bill->uuid) }}"
-                                                class="btn btn-sm btn-outline-primary" title="View Bill">
-                                                <i class='bx bx-show'></i>
-                                            </a>
-                                        @elseif(isset($transaction->bill))
-                                            <a href="{{ route('customers.bills.show', $transaction->bill->uuid) }}"
-                                                class="btn btn-sm btn-outline-primary" title="View Bill">
-                                                <i class='bx bx-show'></i>
-                                            </a>
-                                        @else
-                                            <span class="text-muted">-</span>
-                                        @endif
-                                    @elseif ($type == 'payment')
+                                    @if ($type == 'payment')
                                         <a href="{{ route('customers.receive-payment.show', $transaction->uuid) }}"
                                             class="btn btn-sm btn-outline-info" title="View Payment Details">
                                             <i class='bx bx-show'></i>

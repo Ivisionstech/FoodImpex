@@ -161,44 +161,49 @@ class CustomerController extends Controller
         }
     }
 
-    public function store(StoreRequest $request)
-    {
-        try {
-            DB::beginTransaction();
-            $customer = Customer::create([
-                'uuid' => Str::uuid(),
-                'name' => $request->name,
-                'person_name' => $request->person_name,
-                'phone' => $request->phone,
-                'email' => $request->email,
-                'balance' => $request->balance,
-                'notes' => $request->notes,
-                'address' => $request->address,
-            ]);
-            CustomerTransaction::create([
-                'uuid' => Str::uuid(),
-                'customer_id' => $customer->id,
-                'transaction_date' => $request->open_balance_date ?? now(),
-                'amount' => $request->balance,
-                'type' => 'balance',
-                'description' => 'Initial Balance',
-                'current_balance' => $request->balance,
-                'customer_bill_id' => null,
-            ]);
-            DB::commit();
-            return response()->json([
-                'status' => true,
-                'message' => 'Customer created successfully.',
-                'redirect' => route('customers.list'),
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => false,
-                'message' => 'Failed to create customer: ' . $e->getMessage(),
-            ]);
-        }
+   public function store(StoreRequest $request)
+{
+    try {
+        DB::beginTransaction();
+        $customer = Customer::create([
+            'uuid' => Str::uuid(),
+            'name' => $request->name,
+            'person_name' => $request->person_name,
+            'phone' => $request->phone,
+            'email' => $request->email,
+            'balance' => $request->balance,
+            'notes' => $request->notes,
+            'address' => $request->address,
+        ]);
+        
+        // Create opening balance transaction - Auto Approved
+        $openingBalance = $request->balance ?? 0;
+        CustomerTransaction::create([
+            'uuid' => Str::uuid(),
+            'customer_id' => $customer->id,
+            'transaction_date' => $request->open_balance_date ?? now(),
+            'amount' => $openingBalance,
+            'type' => 'balance',
+            'description' => 'Opening Balance',
+            'current_balance' => $openingBalance,
+            'customer_bill_id' => null,
+            'approval_status' => 'approved',  // <-- ADD THIS LINE
+        ]);
+        
+        DB::commit();
+        return response()->json([
+            'status' => true,
+            'message' => 'Customer created successfully.',
+            'redirect' => route('customers.list'),
+        ]);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to create customer: ' . $e->getMessage(),
+        ]);
     }
+}
 
     public function edit(string $uuid)
     {
@@ -206,7 +211,7 @@ class CustomerController extends Controller
         return view('admin.pages.customers.edit', compact('customer'));
     }
 
-    public function view(Request $request, string $uuid)
+public function view(Request $request, string $uuid)
 {
     try {
         $customer = Customer::where('uuid', $uuid)->firstOrFail();
@@ -217,7 +222,6 @@ class CustomerController extends Controller
         $trans_to = $request->trans_to;
 
         // Get ONLY customer transactions (bills, payments, balance, general entries)
-        // No need to fetch daybook entries separately as they are already in customer_transactions
         $transactionsQuery = $customer->customerTransactions();
         
         // Apply date filters to transactions
@@ -229,12 +233,13 @@ class CustomerController extends Controller
             $transactionsQuery->where('transaction_date', '<=', $trans_to);
         }
         
-        // Get transactions ordered by date (newest first for display)
+        // Get transactions ordered by date (DESCENDING - newest first)
+        // This ensures latest entries appear on top, including opening balance at the bottom
         $customerTransactions = $transactionsQuery->orderBy('transaction_date', 'DESC')
             ->orderBy('id', 'DESC')
             ->get();
         
-        // Get bills with filters
+        // Get bills with filters (for the Bills section only)
         $billsQuery = $customer->bills();
         if ($bill_from && $bill_to) {
             $billsQuery->whereBetween('bill_date', [$bill_from, $bill_to]);

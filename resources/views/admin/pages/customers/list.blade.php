@@ -105,10 +105,16 @@
                             {{-- Balance Column --}}
                             <div>
                                 <div class="d-md-none fw-bold text-muted small">Balance</div>
-                                <span class="fw-bold {{ $customer->balance >= 0 ? 'text-success' : 'text-danger' }}">
-                                    PKR {{ number_format(abs($customer->balance), 2) }}
-                                    @if($customer->balance != 0)
-                                        <small class="text-muted">{{ $customer->balance >= 0 ? 'DR' : 'CR' }}</small>
+                                @php
+                                    $balance = floatval($customer->balance ?? 0);
+                                    // SWAPPED: Positive = CR, Negative = DR
+                                    $balanceClass = $balance >= 0 ? 'text-success' : 'text-danger';
+                                    $balanceLabel = $balance >= 0 ? 'CR' : 'DR';
+                                @endphp
+                                <span class="fw-bold {{ $balanceClass }}">
+                                    PKR {{ number_format(abs($balance), 2) }}
+                                    @if($balance != 0)
+                                        <small class="text-muted">{{ $balanceLabel }}</small>
                                     @endif
                                 </span>
                             </div>
@@ -122,33 +128,40 @@
                             {{-- Actions Column --}}
                             <div class="text-center">
                                 <div class="d-md-none fw-bold text-muted small">Actions</div>
-                                <div class="dropdown">
-                                    <button type="button" class="btn btn-sm btn-icon rounded-circle text-muted" data-bs-toggle="dropdown">
-                                        <i class="bx bx-dots-vertical-rounded fs-5"></i>
-                                    </button>
-                                    <div class="dropdown-menu shadow-sm border-0">
-                                        <a class="dropdown-item py-2" href="{{ route('customers.view', $customer->uuid) }}">
-                                            <i class="bx bx-show-alt me-2 text-info"></i> View Details
+                                <div class="action-icons d-flex justify-content-center gap-1">
+                                    <!-- View -->
+                                    <a href="{{ route('customers.view', $customer->uuid) }}" 
+                                       class="btn-action-icon btn-view" 
+                                       title="View Details">
+                                        <i class="bx bx-show-alt"></i>
+                                    </a>
+                                    
+                                    <!-- Edit -->
+                                    <a href="{{ route('customers.edit', $customer->uuid) }}" 
+                                       class="btn-action-icon btn-edit" 
+                                       title="Edit Customer">
+                                        <i class="bx bx-edit-alt"></i>
+                                    </a>
+                                    
+                                    <!-- Download Ledger -->
+                                    <a href="{{ route('customers.bank-statement', $customer->uuid) }}" 
+                                       class="btn-action-icon btn-ledger" 
+                                       target="_blank"
+                                       title="Download Ledger">
+                                        <i class="bx bx-download"></i>
+                                    </a>
+                                    
+                                    <!-- Delete -->
+                                    @if($isAdmin)
+                                        <a href="javascript:void(0);" 
+                                           class="btn-action-icon btn-delete action-confirm" 
+                                           data-url="{{ route('customers.delete', $customer->uuid) }}"
+                                           data-text="You want to delete this customer!" 
+                                           data-button-text="Yes, Delete it!"
+                                           title="Delete Customer">
+                                            <i class="bx bx-trash"></i>
                                         </a>
-                                        <a class="dropdown-item py-2" href="{{ route('customers.edit', $customer->uuid) }}">
-                                            <i class="bx bx-edit-alt me-2 text-primary"></i> Edit Customer
-                                        </a>
-                                        <a class="dropdown-item py-2" href="{{ route('customers.receive-payment', $customer->uuid) }}">
-                                            <i class="bx bx-money me-2 text-success"></i> Receive Payment
-                                        </a>
-                                        <a class="dropdown-item py-2" href="{{ route('customers.bank-statement', $customer->uuid) }}" target="_blank">
-                                            <i class="bx bx-download me-2 text-secondary"></i> Bank Statement
-                                        </a>
-                                        @if($isAdmin)
-                                            <div class="dropdown-divider"></div>
-                                            <a class="dropdown-item py-2 text-danger action-confirm" href="javascript:void(0);" 
-                                               data-url="{{ route('customers.delete', $customer->uuid) }}"
-                                               data-text="You want to delete this customer!" 
-                                               data-button-text="Yes, Delete it!">
-                                                <i class="bx bx-trash me-2"></i> Delete Customer
-                                            </a>
-                                        @endif
-                                    </div>
+                                    @endif
                                 </div>
                             </div>
                         </div>
@@ -188,7 +201,7 @@
     /* CSS Grid Layout */
     .customer-grid {
         display: grid;
-        grid-template-columns: minmax(200px, 1fr) 160px minmax(150px, 1fr) 80px;
+        grid-template-columns: minmax(200px, 1fr) 160px minmax(150px, 1fr) 200px;
         gap: 16px;
         align-items: center;
         width: 100%;
@@ -213,7 +226,7 @@
     
     @media (max-width: 992px) {
         .customer-grid {
-            grid-template-columns: minmax(180px, 1fr) 140px minmax(130px, 1fr) 70px;
+            grid-template-columns: minmax(180px, 1fr) 140px minmax(130px, 1fr) 170px;
             gap: 12px;
         }
     }
@@ -225,6 +238,9 @@
         }
         .customer-row {
             margin-bottom: 15px;
+        }
+        .action-icons {
+            justify-content: center !important;
         }
     }
     
@@ -239,6 +255,82 @@
         border-color: #696cff !important;
     }
     
+    /* ============================================
+       ACTION ICON BUTTONS
+       ============================================ */
+    .action-icons {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+    
+    .btn-action-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        text-decoration: none;
+        transition: all 0.25s ease;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+    }
+    
+    .btn-action-icon:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .btn-action-icon i {
+        font-size: 17px;
+        line-height: 1;
+    }
+    
+    /* View - Blue */
+    .btn-view {
+        background: #e7f1ff;
+        color: #0d6efd;
+    }
+    .btn-view:hover {
+        background: #0d6efd;
+        color: #fff;
+    }
+    
+    /* Edit - Amber */
+    .btn-edit {
+        background: #fff3e0;
+        color: #f57c00;
+    }
+    .btn-edit:hover {
+        background: #f57c00;
+        color: #fff;
+    }
+    
+    /* Delete - Red */
+    .btn-delete {
+        background: #fde8e8;
+        color: #dc3545;
+    }
+    .btn-delete:hover {
+        background: #dc3545;
+        color: #fff;
+    }
+    
+    /* Ledger - Teal */
+    .btn-ledger {
+        background: #e0f7fa;
+        color: #00838f;
+    }
+    .btn-ledger:hover {
+        background: #00838f;
+        color: #fff;
+    }
+    
+    /* ============================================
+       OTHER STYLES
+       ============================================ */
     .dropdown-menu {
         border-radius: 12px;
         animation: fadeInDown 0.2s ease;
@@ -285,7 +377,6 @@
         padding: 1.25rem 1.5rem;
     }
     
-    /* Header row styles */
     .header-row {
         border-bottom: 2px solid #e9ecef;
         padding-bottom: 10px;
@@ -328,12 +419,10 @@
         pointer-events: none;
     }
     
-    /* Alert styles */
     .alert {
         border-radius: 12px;
     }
     
-    /* Customer name link hover effect */
     .customer-grid a {
         transition: all 0.2s ease;
     }
