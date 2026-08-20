@@ -91,6 +91,39 @@
             margin-bottom: 5px;
         }
 
+        /* =============================================
+           HIGHLIGHTED CURRENT BALANCE
+           ============================================= */
+        .vendor-details .balance-highlight {
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #fff3cd;
+            border-radius: 8px;
+            display: inline-block;
+            border: 2px solid #ffc107;
+        }
+        
+        .vendor-details .balance-highlight .balance-label {
+            font-size: 14px;
+            color: #856404;
+        }
+        
+        .vendor-details .balance-highlight .balance-amount {
+            font-size: 24px;
+        }
+        
+        .vendor-details .balance-highlight .balance-dr {
+            color: #dc3545 !important;
+            font-weight: bold;
+        }
+        
+        .vendor-details .balance-highlight .balance-cr {
+            color: #28a745 !important;
+            font-weight: bold;
+        }
+
         .transactions-table {
             width: 100%;
             border-collapse: collapse;
@@ -188,37 +221,6 @@
             color: #6f42c1;
             font-size: 14px;
             margin-right: 5px;
-        }
-
-        .summary-section {
-            margin-top: 20px;
-            padding: 15px;
-            border: 2px solid #000;
-            background-color: #f8f9fa;
-        }
-
-        .summary-title {
-            font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            text-align: center;
-            background-color: #d3d3d3;
-            padding: 5px;
-        }
-
-        .summary-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 5px 10px;
-            font-size: 12px;
-        }
-
-        .summary-label {
-            font-weight: bold;
-        }
-
-        .summary-value {
-            font-weight: bold;
         }
 
         .text-danger { color: #dc3545; }
@@ -387,6 +389,11 @@
         } else {
             $downloadUrl .= '?action=download';
         }
+        
+        // Calculate balance for highlight
+        $highlightBalance = floatval($vendor->balance ?? 0);
+        $highlightClass = $highlightBalance < 0 ? 'balance-dr' : 'balance-cr';
+        $highlightLabel = $highlightBalance < 0 ? 'DR' : 'CR';
     @endphp
 
     <div class="action-buttons no-print">
@@ -428,12 +435,15 @@
         @if($filterInfo)
             <div style="font-size: 12px; margin-top: 5px; color: #666;">{{ $filterInfo }}</div>
         @endif
-        <div style="font-size: 13px; margin-top: 8px; font-weight: bold;">
-            Current Balance: 
-            <span style="color: {{ ($vendor->balance ?? 0) < 0 ? '#dc3545' : '#28a745' }}">
-                PKR {{ number_format(abs($vendor->balance ?? 0), 2) }} {{ ($vendor->balance ?? 0) < 0 ? 'DR' : 'CR' }}
-            </span>
-            <span style="font-size: 10px; color: #666;">(Approved Only)</span>
+        
+        <!-- ============================================= -->
+        <!-- HIGHLIGHTED CURRENT BALANCE -->
+        <!-- ============================================= -->
+        <div class="balance-highlight">
+            <div class="balance-label">CURRENT BALANCE</div>
+            <div class="balance-amount {{ $highlightClass }}">
+                PKR {{ number_format(abs($highlightBalance), 2) }} {{ $highlightLabel }}
+            </div>
         </div>
     </div>
 
@@ -678,36 +688,6 @@
             @endforelse
         </tbody>
     </table>
-
-    <div class="summary-section">
-        <div class="summary-title">LEDGER SUMMARY</div>
-        <div class="summary-row">
-            <span class="summary-label">Total Debits (Payment/Outward):</span>
-            <span class="summary-value text-danger">PKR {{ number_format($totalDebits ?? 0, 2) }}</span>
-        </div>
-        <div class="summary-row">
-            <span class="summary-label">Total Credits (Purchase/Inward):</span>
-            <span class="summary-value text-success">PKR {{ number_format($totalCredits ?? 0, 2) }}</span>
-        </div>
-        <div class="summary-row">
-            <span class="summary-label">Net Balance:</span>
-            <span class="summary-value {{ $netBalance >= 0 ? 'text-danger' : 'text-success' }}">
-                PKR {{ number_format(abs($netBalance), 2) }} {{ $netBalance >= 0 ? 'DR' : 'CR' }}
-            </span>
-        </div>
-        <div class="summary-row">
-            <span class="summary-label">Total Transactions:</span>
-            <span class="summary-value">{{ count($vendorTransactions) }}</span>
-        </div>
-        <div class="summary-row">
-            <span class="summary-label">Approved Transactions:</span>
-            <span class="summary-value text-success">{{ $approvedCount }}</span>
-        </div>
-        <div class="summary-row">
-            <span class="summary-label">Pending Transactions:</span>
-            <span class="summary-value text-warning">{{ $pendingCount }}</span>
-        </div>
-    </div>
 
     <div class="footer">
         <p>This ledger contains {{ count($vendorTransactions) }} transaction(s) in chronological order.</p>
