@@ -16,7 +16,13 @@
                                     </div>
                                     <div>
                                         <h5 class="mb-0">Edit General Entry #{{ $entry->id }}</h5>
-                                        <small class="text-muted">Update existing general entry</small>
+                                        <small class="text-muted">
+                                            @if($batchId)
+                                                Batch ID: {{ substr($batchId, 0, 8) }}... ({{ $entries->count() }} entries)
+                                            @else
+                                                Single Entry
+                                            @endif
+                                        </small>
                                     </div>
                                 </div>
                             </div>
@@ -31,6 +37,12 @@
                                             <i class="bx bx-{{ $entry->approval_status == 'approved' ? 'check-circle' : 'time' }} me-1"></i>
                                             {{ ucfirst($entry->approval_status) }}
                                         </span>
+                                        @if($batchId)
+                                            <span class="badge bg-info p-2 ms-1">
+                                                <i class="bx bx-layer me-1"></i>
+                                                Batch
+                                            </span>
+                                        @endif
                                     </div>
                                 </div>
                             </div>
@@ -41,7 +53,13 @@
                 <!-- Journal Entries Container -->
                 <div class="card">
                     <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Edit Entries</h5>
+                        <h5 class="mb-0">
+                            @if($batchId)
+                                Edit Batch Entries ({{ $entries->count() }})
+                            @else
+                                Edit Entry
+                            @endif
+                        </h5>
                         <button type="button" class="btn btn-primary" id="addRowBtn">
                             <i class="bx bx-plus-circle me-1"></i> Add New Entry
                         </button>
@@ -208,6 +226,15 @@
         .journal-entry-row {
             animation: fadeIn 0.3s ease-in-out;
         }
+        
+        .batch-badge {
+            background: #6f42c1;
+            color: white;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
     </style>
 
     <script>
@@ -367,7 +394,7 @@
                                 <input type="text" class="form-control" name="descriptions[]" placeholder="Optional description..." value="${descriptionValue.replace(/"/g, '&quot;')}">
                             </div>
                             <div class="col-md-1">
-                                <button type="button" class="btn btn-outline-danger remove-row-btn" data-row="${rowId}" ${isFirst ? 'style="display: none;"' : ''}>
+                                <button type="button" class="btn btn-outline-danger remove-row-btn" data-row="${rowId}" ${isFirst && ${entries->count()} <= 1 ? 'style="display: none;"' : ''}>
                                     <i class="fas fa-trash-alt"></i>
                                 </button>
                             </div>
@@ -376,30 +403,31 @@
                 `;
             }
 
-            // Load existing entry data
-            function loadExistingEntry() {
+            // Load existing entry data for ALL entries in the batch
+            function loadExistingEntries() {
                 let existingData = [];
-                @if($entry)
-                    // Create an array with the existing entry data
-                    let debitAmount = {{ $entry->amount ?? 0 }};
-                    let isDebit = {{ $entry->debit_type && $entry->debit_id ? 'true' : 'false' }};
-                    let isCredit = {{ $entry->credit_type && $entry->credit_id ? 'true' : 'false' }};
-                    let accountType = '{{ $entry->debit_type ?? $entry->credit_type ?? '' }}';
-                    let accountId = {{ $entry->debit_id ?? $entry->credit_id ?? 0 }};
-                    
-                    let accountValue = '';
-                    if (isDebit) {
-                        accountValue = accountType + '_' + accountId;
-                    } else if (isCredit) {
-                        accountValue = accountType + '_' + accountId;
-                    }
-                    
-                    existingData.push({
-                        account: accountValue,
-                        debit: isDebit ? debitAmount : 0,
-                        credit: isCredit ? debitAmount : 0,
-                        description: '{{ $entry->description ?? '' }}'
-                    });
+                @if(isset($entries) && $entries->count() > 0)
+                    @foreach($entries as $entryItem)
+                        let isDebit = {{ $entryItem->debit_type && $entryItem->debit_id ? 'true' : 'false' }};
+                        let isCredit = {{ $entryItem->credit_type && $entryItem->credit_id ? 'true' : 'false' }};
+                        let accountType = '{{ $entryItem->debit_type ?? $entryItem->credit_type ?? '' }}';
+                        let accountId = {{ $entryItem->debit_id ?? $entryItem->credit_id ?? 0 }};
+                        let amount = {{ $entryItem->amount ?? 0 }};
+                        
+                        let accountValue = '';
+                        if (isDebit) {
+                            accountValue = accountType + '_' + accountId;
+                        } else if (isCredit) {
+                            accountValue = accountType + '_' + accountId;
+                        }
+                        
+                        existingData.push({
+                            account: accountValue,
+                            debit: isDebit ? amount : 0,
+                            credit: isCredit ? amount : 0,
+                            description: '{{ addslashes($entryItem->description ?? '') }}'
+                        });
+                    @endforeach
                 @endif
                 
                 return existingData;
@@ -503,7 +531,7 @@
             }
 
             // Initialize with existing data
-            let initialData = loadExistingEntry();
+            let initialData = loadExistingEntries();
             renderRows(initialData);
         });
     </script>

@@ -188,153 +188,183 @@ class GeneralTransactionController extends Controller
     /**
      * Show the form for editing the specified entry - FIXED
      */
-    public function edit($id)
-    {
-        try {
-            $entry = Daybook::findOrFail($id);  // ✅ Use Daybook model
-            
-            // Get all necessary data for the form
-            $customers = Customer::where('active', 1)->orderBy('name')->get();
-            $vendors = Vendor::where('active', 1)->orderBy('company_name')->get();
-            $banks = Bank::orderBy('name')->get();
-            $cash = Cash::first();
-            $expenses = \App\Models\Expense::all();
-            
-            return view('admin.pages.general.edit', compact('entry', 'customers', 'vendors', 'banks', 'cash', 'expenses'));  // ✅ Correct view path
-        } catch (\Throwable $th) {
-            \Log::error('Edit entry error: ' . $th->getMessage());
-            return redirect()->route('general-transactions.index')->with('error', 'Entry not found');
+   /**
+ * Show the form for editing the specified entry - FIXED for BATCH
+ */
+public function edit($id)
+{
+    try {
+        $entry = Daybook::findOrFail($id);
+        
+        // Check if this entry is part of a batch
+        $batchId = $entry->batch_id;
+        $entries = [];
+        
+        if ($batchId) {
+            // Load all entries in this batch
+            $entries = Daybook::where('batch_id', $batchId)
+                ->orderBy('id', 'asc')
+                ->get();
+        } else {
+            // Single entry (no batch)
+            $entries = collect([$entry]);
         }
+        
+        // Get all necessary data for the form
+        $customers = Customer::where('active', 1)->orderBy('name')->get();
+        $vendors = Vendor::where('active', 1)->orderBy('company_name')->get();
+        $banks = Bank::orderBy('name')->get();
+        $cash = Cash::first();
+        $expenses = \App\Models\Expense::all();
+        
+        return view('admin.pages.general.edit', compact('entries', 'customers', 'vendors', 'banks', 'cash', 'expenses', 'batchId', 'entry'));
+        
+    } catch (\Throwable $th) {
+        \Log::error('Edit entry error: ' . $th->getMessage());
+        return redirect()->route('general-transactions.index')->with('error', 'Entry not found');
     }
+}
 
-    /**
-     * Update the specified entry - FIXED
-     */
-    public function update(Request $request, $id)
-    {
-        try {
-            DB::beginTransaction();
-            
-            $entry = Daybook::findOrFail($id);
-            
-            // Validate the request
-            $request->validate([
-                'transaction_date' => 'required|date',
-                'account_ids' => 'required|array',
-                'account_ids.*' => 'required|string',
-                'debit_amounts' => 'required|array',
-                'credit_amounts' => 'required|array',
-                'descriptions' => 'array',
-            ]);
-            
-            $date = $request->input('transaction_date');
-            $accountIds = $request->input('account_ids', []);
-            $debitAmounts = $request->input('debit_amounts', []);
-            $creditAmounts = $request->input('credit_amounts', []);
-            $descriptions = $request->input('descriptions', []);
-            
-            // Reverse previous transaction effects
-            $previousEntry = Daybook::find($id);
-            if ($previousEntry) {
-                // Reverse the previous transaction
-                if ($previousEntry->debit_type && $previousEntry->debit_id) {
-                    $this->reverseTransaction($previousEntry->debit_type, $previousEntry->debit_id, $previousEntry->amount, 'debit');
-                }
-                if ($previousEntry->credit_type && $previousEntry->credit_id) {
-                    $this->reverseTransaction($previousEntry->credit_type, $previousEntry->credit_id, $previousEntry->amount, 'credit');
-                }
+/**
+ * Update the specified entry - FIXED for BATCH
+ */
+public function update(Request $request, $id)
+{
+    try {
+        DB::beginTransaction();
+        
+        $entry = Daybook::findOrFail($id);
+        
+        // Get the batch_id if it exists
+        $batchId = $entry->batch_id;
+        
+        // Validate the request
+        $request->validate([
+            'transaction_date' => 'required|date',
+            'account_ids' => 'required|array',
+            'account_ids.*' => 'required|string',
+            'debit_amounts' => 'required|array',
+            'credit_amounts' => 'required|array',
+            'descriptions' => 'array',
+        ]);
+        
+        $date = $request->input('transaction_date');
+        $accountIds = $request->input('account_ids', []);
+        $debitAmounts = $request->input('debit_amounts', []);
+        $creditAmounts = $request->input('credit_amounts', []);
+        $descriptions = $request->input('descriptions', []);
+        
+        // If this is a batch entry, get all entries in the batch
+        $oldEntries = [];
+        if ($batchId) {
+            $oldEntries = Daybook::where('batch_id', $batchId)->get();
+        } else {
+            $oldEntries = collect([$entry]);
+        }
+        
+        // Reverse previous transaction effects for all entries
+        foreach ($oldEntries as $oldEntry) {
+            if ($oldEntry->debit_type && $oldEntry->debit_id) {
+                $this->reverseTransaction($oldEntry->debit_type, $oldEntry->debit_id, $oldEntry->amount, 'debit');
+            }
+            if ($oldEntry->credit_type && $oldEntry->credit_id) {
+                $this->reverseTransaction($oldEntry->credit_type, $oldEntry->credit_id, $oldEntry->amount, 'credit');
             }
             
-            // Delete the previous daybook entry and its related transactions
-            if ($previousEntry) {
-                // Delete related transactions
-                if ($previousEntry->customer_transaction_id) {
-                    CustomerTransaction::find($previousEntry->customer_transaction_id)?->delete();
-                }
-                if ($previousEntry->vendor_transaction_id) {
-                    VendorTransaction::find($previousEntry->vendor_transaction_id)?->delete();
-                }
-                $previousEntry->delete();
+            // Delete related transactions
+            if ($oldEntry->customer_transaction_id) {
+                CustomerTransaction::find($oldEntry->customer_transaction_id)?->delete();
+            }
+            if ($oldEntry->vendor_transaction_id) {
+                VendorTransaction::find($oldEntry->vendor_transaction_id)?->delete();
+            }
+        }
+        
+        // Delete all old entries in the batch
+        Daybook::where('batch_id', $batchId)->delete();
+        
+        // Generate a new batch ID for the updated entries
+        $newBatchId = Str::uuid()->toString();
+        
+        // Now create new entries with updated data
+        $entriesSaved = 0;
+        
+        foreach ($accountIds as $index => $accountId) {
+            if (empty($accountId)) {
+                continue;
             }
             
-            // Now create new entries with updated data
-            $entriesSaved = 0;
+            $amount = 0;
+            $type = '';
             
-            foreach ($accountIds as $index => $accountId) {
-                if (empty($accountId)) {
-                    continue;
-                }
-                
-                $amount = 0;
-                $type = '';
-                
-                if (isset($debitAmounts[$index]) && $debitAmounts[$index] > 0) {
-                    $amount = $debitAmounts[$index];
-                    $type = 'debit';
-                } elseif (isset($creditAmounts[$index]) && $creditAmounts[$index] > 0) {
-                    $amount = $creditAmounts[$index];
-                    $type = 'credit';
-                } else {
-                    continue;
-                }
-                
-                $parts = explode('_', $accountId);
-                if (count($parts) != 2) {
-                    continue;
-                }
-                
-                $accountType = $parts[0];
-                $accountIdNum = $parts[1];
-                $description = isset($descriptions[$index]) ? $descriptions[$index] : '';
-                
-                // Create new daybook entry
-                $daybook = new Daybook();
-                $daybook->transaction_date = $date;
-                $daybook->amount = $amount;
-                $daybook->status = 1;
-                $daybook->type = 'transaction';
-                $daybook->approval_status = 'approved';
-                $daybook->description = $description . ' - ' . $type . ' from ' . $accountType;
-                
-                if ($type == 'debit') {
-                    $daybook->debit_type = $accountType;
-                    $daybook->debit_id = $accountIdNum;
-                } else {
-                    $daybook->credit_type = $accountType;
-                    $daybook->credit_id = $accountIdNum;
-                }
-                
-                $daybook->save();
-                
-                // Update balance and create transaction
-                if ($type == 'debit') {
-                    $this->processDebit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
-                } elseif ($type == 'credit') {
-                    $this->processCredit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
-                }
-                
-                $entriesSaved++;
-            }
-            
-            if ($entriesSaved > 0) {
-                DB::commit();
-                return redirect()->route('general-transactions.index')
-                    ->with('success', $entriesSaved . ' entry(s) updated successfully!');
+            if (isset($debitAmounts[$index]) && $debitAmounts[$index] > 0) {
+                $amount = $debitAmounts[$index];
+                $type = 'debit';
+            } elseif (isset($creditAmounts[$index]) && $creditAmounts[$index] > 0) {
+                $amount = $creditAmounts[$index];
+                $type = 'credit';
             } else {
-                DB::rollBack();
-                return redirect()->back()
-                    ->withInput()
-                    ->with('error', 'No valid entries found. Please add amount.');
+                continue;
             }
             
-        } catch (\Throwable $th) {
+            $parts = explode('_', $accountId);
+            if (count($parts) != 2) {
+                continue;
+            }
+            
+            $accountType = $parts[0];
+            $accountIdNum = $parts[1];
+            $description = isset($descriptions[$index]) ? $descriptions[$index] : '';
+            
+            // Create new daybook entry
+            $daybook = new Daybook();
+            $daybook->batch_id = $newBatchId;
+            $daybook->transaction_date = $date;
+            $daybook->amount = $amount;
+            $daybook->status = 1;
+            $daybook->type = 'transaction';
+            $daybook->approval_status = 'approved';
+            $daybook->description = $description . ' - ' . $type . ' from ' . $accountType;
+            
+            if ($type == 'debit') {
+                $daybook->debit_type = $accountType;
+                $daybook->debit_id = $accountIdNum;
+            } else {
+                $daybook->credit_type = $accountType;
+                $daybook->credit_id = $accountIdNum;
+            }
+            
+            $daybook->save();
+            
+            // Update balance and create transaction
+            if ($type == 'debit') {
+                $this->processDebit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
+            } elseif ($type == 'credit') {
+                $this->processCredit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
+            }
+            
+            $entriesSaved++;
+        }
+        
+        if ($entriesSaved > 0) {
+            DB::commit();
+            return redirect()->route('general-transactions.index')
+                ->with('success', $entriesSaved . ' entry(s) updated successfully! (Batch: ' . $newBatchId . ')');
+        } else {
             DB::rollBack();
-            \Log::error('Update error: ' . $th->getMessage());
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Error: ' . $th->getMessage());
+                ->with('error', 'No valid entries found. Please add amount.');
         }
+        
+    } catch (\Throwable $th) {
+        DB::rollBack();
+        \Log::error('Update error: ' . $th->getMessage());
+        return redirect()->back()
+            ->withInput()
+            ->with('error', 'Error: ' . $th->getMessage());
     }
+}
 
     // Helper methods for processing transactions
     private function processDebit($accountType, $accountIdNum, $amount, $date, $description, $daybook)
