@@ -242,6 +242,12 @@
             let rowCounter = 0;
             let rowData = [];
 
+            // =============================================
+            // PASS PHP DATA TO JAVASCRIPT AS JSON
+            // =============================================
+            var existingEntries = @json($entries);
+            console.log('Existing Entries:', existingEntries);
+
             function customMatcher(params, data) {
                 if ($.trim(params.term) === '') return data;
                 
@@ -394,7 +400,7 @@
                                 <input type="text" class="form-control" name="descriptions[]" placeholder="Optional description..." value="${descriptionValue.replace(/"/g, '&quot;')}">
                             </div>
                             <div class="col-md-1">
-                                <button type="button" class="btn btn-outline-danger remove-row-btn" data-row="${rowId}" ${isFirst && ${entries->count()} <= 1 ? 'style="display: none;"' : ''}>
+                                <button type="button" class="btn btn-outline-danger remove-row-btn" data-row="${rowId}" ${isFirst && {{ $entries->count() ?? 1 }} <= 1 ? 'style="display: none;"' : ''}>
                                     <i class="fas fa-trash-alt"></i>
                                 </button>
                             </div>
@@ -403,32 +409,40 @@
                 `;
             }
 
-            // Load existing entry data for ALL entries in the batch
+            // =============================================
+            // LOAD EXISTING ENTRIES FROM JSON DATA
+            // =============================================
             function loadExistingEntries() {
-                let existingData = [];
-                @if(isset($entries) && $entries->count() > 0)
-                    @foreach($entries as $entryItem)
-                        let isDebit = {{ $entryItem->debit_type && $entryItem->debit_id ? 'true' : 'false' }};
-                        let isCredit = {{ $entryItem->credit_type && $entryItem->credit_id ? 'true' : 'false' }};
-                        let accountType = '{{ $entryItem->debit_type ?? $entryItem->credit_type ?? '' }}';
-                        let accountId = {{ $entryItem->debit_id ?? $entryItem->credit_id ?? 0 }};
-                        let amount = {{ $entryItem->amount ?? 0 }};
+                var existingData = [];
+                
+                if (existingEntries && existingEntries.length > 0) {
+                    $.each(existingEntries, function(index, entry) {
+                        var isDebit = (entry.debit_type && entry.debit_id) ? true : false;
+                        var isCredit = (entry.credit_type && entry.credit_id) ? true : false;
+                        var accountType = entry.debit_type || entry.credit_type || '';
+                        var accountId = entry.debit_id || entry.credit_id || 0;
+                        var amount = parseFloat(entry.amount) || 0;
                         
-                        let accountValue = '';
+                        var accountValue = '';
                         if (isDebit) {
                             accountValue = accountType + '_' + accountId;
                         } else if (isCredit) {
                             accountValue = accountType + '_' + accountId;
                         }
                         
+                        // Clean description (remove the "- type from account" suffix if present)
+                        var description = entry.description || '';
+                        // Remove the auto-generated suffix if present
+                        var cleanDescription = description.replace(/\s*-\s*(debit|credit)\s+from\s+\w+$/, '');
+                        
                         existingData.push({
                             account: accountValue,
                             debit: isDebit ? amount : 0,
                             credit: isCredit ? amount : 0,
-                            description: '{{ addslashes($entryItem->description ?? '') }}'
+                            description: cleanDescription
                         });
-                    @endforeach
-                @endif
+                    });
+                }
                 
                 return existingData;
             }
@@ -464,7 +478,13 @@
                 
                 rowCounter = dataToRender.length - 1;
                 
-                $('.account-select').each(function() { initSelect2(this); });
+                // Initialize Select2 for all rows
+                setTimeout(function() {
+                    $('.account-select').each(function() { 
+                        initSelect2(this); 
+                    });
+                }, 100);
+                
                 calculateTotals();
             }
 
@@ -530,8 +550,11 @@
                 }
             }
 
-            // Initialize with existing data
-            let initialData = loadExistingEntries();
+            // =============================================
+            // INITIALIZE WITH EXISTING DATA
+            // =============================================
+            var initialData = loadExistingEntries();
+            console.log('Initial Data for Edit:', initialData);
             renderRows(initialData);
         });
     </script>
