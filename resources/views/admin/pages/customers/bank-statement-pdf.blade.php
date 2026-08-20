@@ -87,6 +87,39 @@
             margin-bottom: 5px;
         }
 
+        /* =============================================
+           HIGHLIGHTED CURRENT BALANCE
+           ============================================= */
+        .customer-details .balance-highlight {
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #fff3cd;
+            border-radius: 8px;
+            display: inline-block;
+            border: 2px solid #ffc107;
+        }
+        
+        .customer-details .balance-highlight .balance-label {
+            font-size: 14px;
+            color: #856404;
+        }
+        
+        .customer-details .balance-highlight .balance-amount {
+            font-size: 24px;
+        }
+        
+        .customer-details .balance-highlight .balance-dr {
+            color: #dc3545 !important;
+            font-weight: bold;
+        }
+        
+        .customer-details .balance-highlight .balance-cr {
+            color: #28a745 !important;
+            font-weight: bold;
+        }
+
         .transactions-table {
             width: 100%;
             border-collapse: collapse;
@@ -321,6 +354,11 @@
         if (!empty($params)) {
             $downloadUrl .= '?' . http_build_query($params);
         }
+        
+        // Calculate balance for highlight
+        $highlightBalance = floatval($customer->balance ?? 0);
+        $highlightClass = $highlightBalance < 0 ? 'balance-dr' : 'balance-cr';
+        $highlightLabel = $highlightBalance < 0 ? 'DR' : 'CR';
     @endphp
 
     <!-- Action Buttons - Hidden when printing -->
@@ -360,11 +398,15 @@
         <div class="party-name">CUSTOMER NAME: {{ strtoupper($customer->name ?? 'N/A') }}</div>
         <div class="address">ADDRESS: {{ strtoupper($customer->address ?? 'N/A') }}</div>
         <div style="font-size: 12px; margin-top: 5px;">PHONE: {{ $customer->phone ?? 'N/A' }}</div>
-        <div style="font-size: 13px; margin-top: 8px; font-weight: bold;">
-            Current Balance: 
-            <span style="color: {{ ($customer->balance ?? 0) < 0 ? '#dc3545' : '#28a745' }}">
-                PKR {{ number_format(abs($customer->balance ?? 0), 2) }} {{ ($customer->balance ?? 0) < 0 ? 'DR' : 'CR' }}
-            </span>
+        
+        <!-- ============================================= -->
+        <!-- HIGHLIGHTED CURRENT BALANCE -->
+        <!-- ============================================= -->
+        <div class="balance-highlight">
+            <div class="balance-label">CURRENT BALANCE</div>
+            <div class="balance-amount {{ $highlightClass }}">
+                PKR {{ number_format(abs($highlightBalance), 2) }} {{ $highlightLabel }}
+            </div>
         </div>
     </div>
 
