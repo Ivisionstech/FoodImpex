@@ -16,8 +16,11 @@ class DaybookController extends Controller
         try {
             $from_date = $request->from_date;
             $to_date = $request->to_date;
+            $entry_type = $request->entry_type;
+            
             $query = Daybook::query();
 
+            // Date filter
             if ($from_date && $to_date) {
                 $query->whereBetween('transaction_date', [$from_date, $to_date]);
             } elseif ($from_date) {
@@ -26,8 +29,17 @@ class DaybookController extends Controller
                 $query->where('transaction_date', '<=', $to_date);
             }
 
+            // Entry type filter - check both type field and description
+            if ($entry_type && $entry_type != 'all') {
+                $query->where(function($q) use ($entry_type) {
+                    $q->where('type', $entry_type)
+                      ->orWhere('description', 'LIKE', '%' . $entry_type . '%');
+                });
+            }
+
             $daybooks = $query->orderBy('id', 'desc')->paginate(10);
-            return view('admin.pages.daybooks.list', compact('daybooks', 'from_date', 'to_date'));
+            
+            return view('admin.pages.daybooks.list', compact('daybooks', 'from_date', 'to_date', 'entry_type'));
         } catch (\Throwable $th) {
             \Log::error('Daybook list error: ' . $th->getMessage());
             return redirect()->back()->with('error', 'Something went wrong: ' . $th->getMessage());
@@ -64,7 +76,7 @@ class DaybookController extends Controller
                 'in_hand' => $in_hand,
                 'description' => $request->description,
                 'status' => $request->status,
-                'type' => 'transaction',
+                'type' => $request->entry_type ?? 'transaction',
                 'approval_status' => 'approved',
             ]);
             

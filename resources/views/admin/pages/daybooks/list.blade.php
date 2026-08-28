@@ -4,54 +4,83 @@
     <div class="container-xxl flex-grow-1 container-p-y">
         <!-- Statistics Cards -->
         @php
+            // Get statistics from controller or calculate here
             $totalEntries = $daybooks->total();
             
-            // Determine credit/debit based on description or amount sign
-            $creditEntries = 0;
-            $debitEntries = 0;
-            $totalDebitAmount = 0;
-            $totalCreditAmount = 0;
+            // Calculate statistics by type
+            $bankEntries = 0;
+            $cashEntries = 0;
+            $customerEntries = 0;
+            $vendorEntries = 0;
+            $expenseEntries = 0;
+            
+            $bankTotal = 0;
+            $cashTotal = 0;
+            $customerTotal = 0;
+            $vendorTotal = 0;
+            $expenseTotal = 0;
             
             foreach ($daybooks as $daybook) {
-                $descLower = strtolower($daybook->description ?? '');
-                $isCredit = false;
-                $isDebit = false;
+                $type = strtolower($daybook->type ?? '');
+                $amount = abs($daybook->amount);
                 
-                // Check if it's a credit entry based on description
-                if (strpos($descLower, 'credit') !== false || 
-                    strpos($descLower, 'income') !== false || 
-                    strpos($descLower, 'received') !== false ||
-                    strpos($descLower, 'payment received') !== false) {
-                    $isCredit = true;
-                } 
-                // Check if it's a debit entry based on description
-                elseif (strpos($descLower, 'debit') !== false || 
-                        strpos($descLower, 'expense') !== false || 
-                        strpos($descLower, 'payment') !== false ||
-                        strpos($descLower, 'withdraw') !== false) {
-                    $isDebit = true;
-                }
-                // If still not determined, use the status field
-                else {
-                    if ($daybook->status == 0) {
-                        $isCredit = true;
-                    } else {
-                        $isDebit = true;
+                // If type is not set in database, try to determine from description
+                if (empty($type) || $type == 'transaction') {
+                    $descLower = strtolower($daybook->description ?? '');
+                    if (strpos($descLower, 'customer') !== false || 
+                        strpos($descLower, 'client') !== false || 
+                        strpos($descLower, 'sale') !== false ||
+                        strpos($descLower, 'received from') !== false) {
+                        $type = 'customer';
+                    } elseif (strpos($descLower, 'vendor') !== false || 
+                              strpos($descLower, 'supplier') !== false || 
+                              strpos($descLower, 'purchase') !== false ||
+                              strpos($descLower, 'paid to') !== false) {
+                        $type = 'vendor';
+                    } elseif (strpos($descLower, 'bank') !== false || 
+                              strpos($descLower, 'withdrawal') !== false || 
+                              strpos($descLower, 'deposit') !== false) {
+                        $type = 'bank';
+                    } elseif (strpos($descLower, 'cash') !== false || 
+                              strpos($descLower, 'cash payment') !== false) {
+                        $type = 'cash';
+                    } elseif (strpos($descLower, 'expense') !== false || 
+                              strpos($descLower, 'bill') !== false || 
+                              strpos($descLower, 'utility') !== false ||
+                              strpos($descLower, 'rent') !== false ||
+                              strpos($descLower, 'salary') !== false) {
+                        $type = 'expense';
                     }
                 }
                 
-                if ($isCredit) {
-                    $creditEntries++;
-                    $totalCreditAmount += abs($daybook->amount);
-                } else {
-                    $debitEntries++;
-                    $totalDebitAmount += abs($daybook->amount);
+                switch ($type) {
+                    case 'bank':
+                        $bankEntries++;
+                        $bankTotal += $amount;
+                        break;
+                    case 'cash':
+                        $cashEntries++;
+                        $cashTotal += $amount;
+                        break;
+                    case 'customer':
+                        $customerEntries++;
+                        $customerTotal += $amount;
+                        break;
+                    case 'vendor':
+                        $vendorEntries++;
+                        $vendorTotal += $amount;
+                        break;
+                    case 'expense':
+                        $expenseEntries++;
+                        $expenseTotal += $amount;
+                        break;
                 }
             }
         @endphp
 
+        <!-- Row 1: Total Entries, Bank Entries, Cash Entries -->
         <div class="row g-4 mb-4">
-            <div class="col-xl-3 col-md-6">
+            <div class="col-xl-4 col-md-6">
                 <div class="card border-0 shadow-sm hover-shadow transition-all">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
@@ -74,69 +103,123 @@
                 </div>
             </div>
 
-            <div class="col-xl-3 col-md-6">
+            <div class="col-xl-4 col-md-6">
+                <div class="card border-0 shadow-sm hover-shadow transition-all">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-warning bg-opacity-10 text-warning p-2 rounded-3">
+                                    <i class="bx bx-building fs-4"></i>
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                <h6 class="text-muted mb-1">Bank Entries</h6>
+                                <h3 class="mb-0 fw-bold text-warning">{{ $bankEntries }}</h3>
+                                <small class="text-muted">PKR {{ number_format($bankTotal, 0) }}</small>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-warning" role="progressbar" style="width: {{ $totalEntries > 0 ? ($bankEntries/$totalEntries)*100 : 0 }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-4 col-md-6">
                 <div class="card border-0 shadow-sm hover-shadow transition-all">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <span class="badge bg-success bg-opacity-10 text-success p-2 rounded-3">
-                                    <i class="bx bx-arrow-up fs-4"></i>
+                                    <i class="bx bx-money fs-4"></i>
                                 </span>
                             </div>
                             <div class="text-end">
-                                <h6 class="text-muted mb-1">Credit Entries</h6>
-                                <h3 class="mb-0 fw-bold text-success">{{ $creditEntries }}</h3>
+                                <h6 class="text-muted mb-1">Cash Entries</h6>
+                                <h3 class="mb-0 fw-bold text-success">{{ $cashEntries }}</h3>
+                                <small class="text-muted">PKR {{ number_format($cashTotal, 0) }}</small>
                             </div>
                         </div>
                         <div class="mt-3">
                             <div class="progress" style="height: 4px;">
-                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ $totalEntries > 0 ? ($creditEntries/$totalEntries)*100 : 0 }}%"></div>
+                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ $totalEntries > 0 ? ($cashEntries/$totalEntries)*100 : 0 }}%"></div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="col-xl-3 col-md-6">
-                <div class="card border-0 shadow-sm hover-shadow transition-all">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <span class="badge bg-danger bg-opacity-10 text-danger p-2 rounded-3">
-                                    <i class="bx bx-arrow-down fs-4"></i>
-                                </span>
-                            </div>
-                            <div class="text-end">
-                                <h6 class="text-muted mb-1">Debit Entries</h6>
-                                <h3 class="mb-0 fw-bold text-danger">{{ $debitEntries }}</h3>
-                            </div>
-                        </div>
-                        <div class="mt-3">
-                            <div class="progress" style="height: 4px;">
-                                <div class="progress-bar bg-danger" role="progressbar" style="width: {{ $totalEntries > 0 ? ($debitEntries/$totalEntries)*100 : 0 }}%"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-xl-3 col-md-6">
+        <!-- Row 2: Customer Entries, Vendor Entries, Expense Entries -->
+        <div class="row g-4 mb-4">
+            <div class="col-xl-4 col-md-6">
                 <div class="card border-0 shadow-sm hover-shadow transition-all">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <span class="badge bg-info bg-opacity-10 text-info p-2 rounded-3">
-                                    <i class="bx bx-money fs-4"></i>
+                                    <i class="bx bx-user fs-4"></i>
                                 </span>
                             </div>
                             <div class="text-end">
-                                <h6 class="text-muted mb-1">Total Amount</h6>
-                                <h3 class="mb-0 fw-bold text-info">PKR {{ number_format($totalCreditAmount + $totalDebitAmount, 0) }}</h3>
+                                <h6 class="text-muted mb-1">Customer Entries</h6>
+                                <h3 class="mb-0 fw-bold text-info">{{ $customerEntries }}</h3>
+                                <small class="text-muted">PKR {{ number_format($customerTotal, 0) }}</small>
                             </div>
                         </div>
                         <div class="mt-3">
                             <div class="progress" style="height: 4px;">
-                                <div class="progress-bar bg-info" role="progressbar" style="width: 100%"></div>
+                                <div class="progress-bar bg-info" role="progressbar" style="width: {{ $totalEntries > 0 ? ($customerEntries/$totalEntries)*100 : 0 }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-4 col-md-6">
+                <div class="card border-0 shadow-sm hover-shadow transition-all">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-danger bg-opacity-10 text-danger p-2 rounded-3">
+                                    <i class="bx bx-store fs-4"></i>
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                <h6 class="text-muted mb-1">Vendor Entries</h6>
+                                <h3 class="mb-0 fw-bold text-danger">{{ $vendorEntries }}</h3>
+                                <small class="text-muted">PKR {{ number_format($vendorTotal, 0) }}</small>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-danger" role="progressbar" style="width: {{ $totalEntries > 0 ? ($vendorEntries/$totalEntries)*100 : 0 }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-4 col-md-6">
+                <div class="card border-0 shadow-sm hover-shadow transition-all">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary p-2 rounded-3">
+                                    <i class="bx bx-cart fs-4"></i>
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                <h6 class="text-muted mb-1">Expense Entries</h6>
+                                <h3 class="mb-0 fw-bold text-secondary">{{ $expenseEntries }}</h3>
+                                <small class="text-muted">PKR {{ number_format($expenseTotal, 0) }}</small>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-secondary" role="progressbar" style="width: {{ $totalEntries > 0 ? ($expenseEntries/$totalEntries)*100 : 0 }}%"></div>
                             </div>
                         </div>
                     </div>
@@ -153,20 +236,32 @@
             <div class="card-body">
                 <form method="GET" action="{{ route('daybooks.list') }}">
                     <div class="row g-3 align-items-end">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label fw-semibold text-muted small">From Date</label>
                             <input type="date" name="from_date" class="form-control" value="{{ $from_date ?? '' }}">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label fw-semibold text-muted small">To Date</label>
                             <input type="date" name="to_date" class="form-control" value="{{ $to_date ?? '' }}">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold text-muted small">Entry Type</label>
+                            <select name="entry_type" class="form-select">
+                                <option value="all" {{ ($entry_type ?? 'all') == 'all' ? 'selected' : '' }}>All Types</option>
+                                <option value="bank" {{ ($entry_type ?? '') == 'bank' ? 'selected' : '' }}>Bank</option>
+                                <option value="cash" {{ ($entry_type ?? '') == 'cash' ? 'selected' : '' }}>Cash</option>
+                                <option value="customer" {{ ($entry_type ?? '') == 'customer' ? 'selected' : '' }}>Customer</option>
+                                <option value="vendor" {{ ($entry_type ?? '') == 'vendor' ? 'selected' : '' }}>Vendor</option>
+                                <option value="expense" {{ ($entry_type ?? '') == 'expense' ? 'selected' : '' }}>Expense</option>
+                                <option value="transaction" {{ ($entry_type ?? '') == 'transaction' ? 'selected' : '' }}>Transaction</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-primary w-100">
                                     <i class="bx bx-filter-alt me-1"></i> Filter
                                 </button>
-                                @if (request()->has('from_date') || request()->has('to_date'))
+                                @if (request()->has('from_date') || request()->has('to_date') || request()->has('entry_type'))
                                     <a href="{{ route('daybooks.list') }}" class="btn btn-outline-secondary w-100">
                                         <i class="bx bx-refresh me-1"></i> Clear
                                     </a>
@@ -197,12 +292,13 @@
 
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
+                    <table class="table table-hover mb-0" id="daybooksTable">
                         <thead class="table-light">
                             <tr>
                                 <th width="5%">#</th>
                                 <th width="12%">Date</th>
-                                <th width="25%">Description</th>
+                                <th width="20%">Description</th>
+                                <th width="10%">Entry Type</th>
                                 <th width="12%">Debit</th>
                                 <th width="12%">Credit</th>
                                 <th width="8%">Type</th>
@@ -262,7 +358,48 @@
                                         $runningBalance -= $debitAmount;
                                     }
                                     
-                                    // Type
+                                    // Determine Entry Type from database or description
+                                    $entryType = $daybook->type ?? 'transaction';
+                                    if (empty($entryType) || $entryType == 'transaction') {
+                                        if (strpos($descLower, 'customer') !== false || 
+                                            strpos($descLower, 'client') !== false || 
+                                            strpos($descLower, 'sale') !== false ||
+                                            strpos($descLower, 'received from') !== false) {
+                                            $entryType = 'customer';
+                                        } elseif (strpos($descLower, 'vendor') !== false || 
+                                                  strpos($descLower, 'supplier') !== false || 
+                                                  strpos($descLower, 'purchase') !== false ||
+                                                  strpos($descLower, 'paid to') !== false) {
+                                            $entryType = 'vendor';
+                                        } elseif (strpos($descLower, 'bank') !== false || 
+                                                  strpos($descLower, 'withdrawal') !== false || 
+                                                  strpos($descLower, 'deposit') !== false) {
+                                            $entryType = 'bank';
+                                        } elseif (strpos($descLower, 'cash') !== false || 
+                                                  strpos($descLower, 'cash payment') !== false) {
+                                            $entryType = 'cash';
+                                        } elseif (strpos($descLower, 'expense') !== false || 
+                                                  strpos($descLower, 'bill') !== false || 
+                                                  strpos($descLower, 'utility') !== false ||
+                                                  strpos($descLower, 'rent') !== false ||
+                                                  strpos($descLower, 'salary') !== false) {
+                                            $entryType = 'expense';
+                                        }
+                                    }
+                                    
+                                    // Entry Type badge colors
+                                    $entryTypeColors = [
+                                        'customer' => 'info',
+                                        'vendor' => 'danger',
+                                        'bank' => 'warning',
+                                        'cash' => 'success',
+                                        'expense' => 'secondary',
+                                        'transaction' => 'primary'
+                                    ];
+                                    $entryTypeBadgeClass = $entryTypeColors[$entryType] ?? 'primary';
+                                    $entryTypeDisplay = ucfirst($entryType);
+                                    
+                                    // Type (CR/DR)
                                     $type = $isCredit ? 'CR' : 'DR';
                                     $typeClass = $isCredit ? 'success' : 'danger';
                                     $typeIcon = $isCredit ? 'arrow-up' : 'arrow-down';
@@ -294,6 +431,12 @@
                                                 {{ ucfirst($daybook->type) }}
                                             </span>
                                         @endif
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ $entryTypeBadgeClass }} bg-opacity-10 text-{{ $entryTypeBadgeClass }} px-3 py-2 rounded-pill">
+                                            <i class="bx bx-tag me-1"></i>
+                                            {{ $entryTypeDisplay }}
+                                        </span>
                                     </td>
                                     <td>
                                         @if($debitAmount > 0)
@@ -375,7 +518,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="9" class="text-center py-5">
+                                    <td colspan="10" class="text-center py-5">
                                         <div class="mb-3">
                                             <i class="bx bx-receipt fs-1 text-muted"></i>
                                         </div>
@@ -386,32 +529,6 @@
                             @endforelse
                         </tbody>
                     </table>
-                </div>
-
-                <!-- Summary Table (2x2) -->
-                <div class="row mt-3">
-                    <div class="col-md-4 offset-md-8">
-                        <div class="card border-0 shadow-sm">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between mb-3">
-                                    <span class="fw-semibold text-muted">Total Debit</span>
-                                    <span class="fw-bold text-danger">PKR {{ number_format($totalDebitAmount, 2) }}</span>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <span class="fw-semibold text-muted">Total Credit</span>
-                                    <span class="fw-bold text-success">PKR {{ number_format($totalCreditAmount, 2) }}</span>
-                                </div>
-                                <hr>
-                                <div class="d-flex justify-content-between">
-                                    <span class="fw-semibold">Net Balance</span>
-                                    <span class="fw-bold {{ $totalCreditAmount - $totalDebitAmount >= 0 ? 'text-success' : 'text-danger' }}">
-                                        PKR {{ number_format(abs($totalCreditAmount - $totalDebitAmount), 2) }}
-                                        {{ $totalCreditAmount - $totalDebitAmount >= 0 ? 'CR' : 'DR' }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Pagination -->
@@ -461,6 +578,8 @@
     .card .badge.bg-success.bg-opacity-10 { background-color: rgba(40, 167, 69, 0.1) !important; color: #28a745 !important; }
     .card .badge.bg-danger.bg-opacity-10 { background-color: rgba(220, 53, 69, 0.1) !important; color: #dc3545 !important; }
     .card .badge.bg-info.bg-opacity-10 { background-color: rgba(23, 162, 184, 0.1) !important; color: #17a2b8 !important; }
+    .card .badge.bg-warning.bg-opacity-10 { background-color: rgba(255, 193, 7, 0.1) !important; color: #ffc107 !important; }
+    .card .badge.bg-secondary.bg-opacity-10 { background-color: rgba(108, 117, 125, 0.1) !important; color: #6c757d !important; }
     
     .progress {
         border-radius: 10px;
@@ -489,6 +608,7 @@
     .badge.bg-danger.bg-opacity-10 { background-color: rgba(220, 53, 69, 0.1) !important; color: #dc3545 !important; }
     .badge.bg-secondary.bg-opacity-10 { background-color: rgba(108, 117, 125, 0.1) !important; color: #6c757d !important; }
     .badge.bg-info.bg-opacity-10 { background-color: rgba(23, 162, 184, 0.1) !important; color: #17a2b8 !important; }
+    .badge.bg-primary.bg-opacity-10 { background-color: rgba(105, 108, 255, 0.1) !important; color: #696cff !important; }
     
     /* Dropdown Styling */
     .dropdown-menu {
@@ -656,13 +776,22 @@
         }
         
         .row.g-4.mb-4 {
-            display: none !important;
+            display: block !important;
         }
     }
 </style>
 
 <script>
 $(document).ready(function() {
+    // Destroy any DataTable instance if it exists
+    if ($.fn.dataTable) {
+        var tableElement = document.getElementById('daybooksTable');
+        if (tableElement && $.fn.dataTable.isDataTable('#daybooksTable')) {
+            $('#daybooksTable').DataTable().destroy();
+            $('#daybooksTable').removeClass('dataTable');
+        }
+    }
+    
     // Animate progress bars on load
     $('.progress-bar').each(function() {
         var width = $(this).css('width');
