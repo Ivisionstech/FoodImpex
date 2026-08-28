@@ -17,6 +17,7 @@ class DaybookController extends Controller
             $from_date = $request->from_date;
             $to_date = $request->to_date;
             $entry_type = $request->entry_type;
+            $perPage = $request->per_page ?? 10;
             
             $query = Daybook::query();
 
@@ -29,17 +30,75 @@ class DaybookController extends Controller
                 $query->where('transaction_date', '<=', $to_date);
             }
 
-            // Entry type filter - check both type field and description
+            // Entry type filter
             if ($entry_type && $entry_type != 'all') {
-                $query->where(function($q) use ($entry_type) {
-                    $q->where('type', $entry_type)
-                      ->orWhere('description', 'LIKE', '%' . $entry_type . '%');
-                });
+                if ($entry_type == 'bank_cash') {
+                    // Filter for both Bank and Cash
+                    $query->where(function($q) {
+                        $q->where('type', 'bank')
+                          ->orWhere('type', 'cash')
+                          ->orWhere('description', 'LIKE', '%bank%')
+                          ->orWhere('description', 'LIKE', '%cash%');
+                    });
+                } else {
+                    // Filter for specific type
+                    $query->where(function($q) use ($entry_type) {
+                        $q->where('type', $entry_type)
+                          ->orWhere('description', 'LIKE', '%' . $entry_type . '%');
+                    });
+                }
             }
 
-            $daybooks = $query->orderBy('id', 'desc')->paginate(10);
+            $daybooks = $query->orderBy('id', 'desc')->paginate($perPage);
             
-            return view('admin.pages.daybooks.list', compact('daybooks', 'from_date', 'to_date', 'entry_type'));
+            // Calculate totals for current page
+            $totalDebitAmount = 0;
+            $totalCreditAmount = 0;
+            
+            foreach ($daybooks as $daybook) {
+                $descLower = strtolower($daybook->description ?? '');
+                $isCredit = false;
+                $isDebit = false;
+                
+                // Check description for credit keywords
+                if (strpos($descLower, 'credit') !== false || 
+                    strpos($descLower, 'income') !== false || 
+                    strpos($descLower, 'received') !== false ||
+                    strpos($descLower, 'payment received') !== false) {
+                    $isCredit = true;
+                } 
+                // Check description for debit keywords
+                elseif (strpos($descLower, 'debit') !== false || 
+                        strpos($descLower, 'expense') !== false || 
+                        strpos($descLower, 'payment') !== false ||
+                        strpos($descLower, 'withdraw') !== false) {
+                    $isDebit = true;
+                }
+                // If still not determined, use status field
+                else {
+                    if ($daybook->status == 0) {
+                        $isCredit = true;
+                    } else {
+                        $isDebit = true;
+                    }
+                }
+                
+                if ($isCredit) {
+                    $totalCreditAmount += abs($daybook->amount);
+                } else {
+                    $totalDebitAmount += abs($daybook->amount);
+                }
+            }
+            
+            return view('admin.pages.daybooks.list', compact(
+                'daybooks', 
+                'from_date', 
+                'to_date', 
+                'entry_type',
+                'perPage',
+                'totalDebitAmount',
+                'totalCreditAmount'
+            ));
         } catch (\Throwable $th) {
             \Log::error('Daybook list error: ' . $th->getMessage());
             return redirect()->back()->with('error', 'Something went wrong: ' . $th->getMessage());

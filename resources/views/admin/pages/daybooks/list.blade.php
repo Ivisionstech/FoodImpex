@@ -76,9 +76,13 @@
                         break;
                 }
             }
+            
+            // Calculate combined Bank + Cash
+            $bankCashEntries = $bankEntries + $cashEntries;
+            $bankCashTotal = $bankTotal + $cashTotal;
         @endphp
 
-        <!-- Row 1: Total Entries, Bank Entries, Cash Entries -->
+        <!-- Row 1: Total Entries, Bank + Cash Entries, Customer Entries -->
         <div class="row g-4 mb-4">
             <div class="col-xl-4 col-md-6">
                 <div class="card border-0 shadow-sm hover-shadow transition-all">
@@ -113,47 +117,20 @@
                                 </span>
                             </div>
                             <div class="text-end">
-                                <h6 class="text-muted mb-1">Bank Entries</h6>
-                                <h3 class="mb-0 fw-bold text-warning">{{ $bankEntries }}</h3>
-                                <small class="text-muted">PKR {{ number_format($bankTotal, 0) }}</small>
+                                <h6 class="text-muted mb-1">Bank + Cash Entries</h6>
+                                <h3 class="mb-0 fw-bold text-warning">{{ $bankCashEntries }}</h3>
+                                <small class="text-muted">PKR {{ number_format($bankCashTotal, 0) }}</small>
                             </div>
                         </div>
                         <div class="mt-3">
                             <div class="progress" style="height: 4px;">
-                                <div class="progress-bar bg-warning" role="progressbar" style="width: {{ $totalEntries > 0 ? ($bankEntries/$totalEntries)*100 : 0 }}%"></div>
+                                <div class="progress-bar bg-warning" role="progressbar" style="width: {{ $totalEntries > 0 ? ($bankCashEntries/$totalEntries)*100 : 0 }}%"></div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="col-xl-4 col-md-6">
-                <div class="card border-0 shadow-sm hover-shadow transition-all">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <span class="badge bg-success bg-opacity-10 text-success p-2 rounded-3">
-                                    <i class="bx bx-money fs-4"></i>
-                                </span>
-                            </div>
-                            <div class="text-end">
-                                <h6 class="text-muted mb-1">Cash Entries</h6>
-                                <h3 class="mb-0 fw-bold text-success">{{ $cashEntries }}</h3>
-                                <small class="text-muted">PKR {{ number_format($cashTotal, 0) }}</small>
-                            </div>
-                        </div>
-                        <div class="mt-3">
-                            <div class="progress" style="height: 4px;">
-                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ $totalEntries > 0 ? ($cashEntries/$totalEntries)*100 : 0 }}%"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Row 2: Customer Entries, Vendor Entries, Expense Entries -->
-        <div class="row g-4 mb-4">
             <div class="col-xl-4 col-md-6">
                 <div class="card border-0 shadow-sm hover-shadow transition-all">
                     <div class="card-body">
@@ -177,7 +154,10 @@
                     </div>
                 </div>
             </div>
+        </div>
 
+        <!-- Row 2: Vendor Entries, Expense Entries, Cash/Bank Detail -->
+        <div class="row g-4 mb-4">
             <div class="col-xl-4 col-md-6">
                 <div class="card border-0 shadow-sm hover-shadow transition-all">
                     <div class="card-body">
@@ -225,6 +205,33 @@
                     </div>
                 </div>
             </div>
+
+            <div class="col-xl-4 col-md-6">
+                <div class="card border-0 shadow-sm hover-shadow transition-all">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-success bg-opacity-10 text-success p-2 rounded-3">
+                                    <i class="bx bx-money fs-4"></i>
+                                </span>
+                            </div>
+                            <div class="text-end">
+                                <h6 class="text-muted mb-1">Cash / Bank Detail</h6>
+                                <div class="d-flex flex-column">
+                                    <small class="text-success">Cash: PKR {{ number_format($cashTotal, 0) }}</small>
+                                    <small class="text-warning">Bank: PKR {{ number_format($bankTotal, 0) }}</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress" style="height: 4px;">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: 50%"></div>
+                                <div class="progress-bar bg-warning" role="progressbar" style="width: 50%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <h4 class="fw-bold py-3 mb-4">
@@ -234,7 +241,7 @@
         {{-- Filter Section --}}
         <div class="card mb-4 border-0 shadow-sm">
             <div class="card-body">
-                <form method="GET" action="{{ route('daybooks.list') }}">
+                <form method="GET" action="{{ route('daybooks.list') }}" id="filterForm">
                     <div class="row g-3 align-items-end">
                         <div class="col-md-3">
                             <label class="form-label fw-semibold text-muted small">From Date</label>
@@ -248,6 +255,7 @@
                             <label class="form-label fw-semibold text-muted small">Entry Type</label>
                             <select name="entry_type" class="form-select">
                                 <option value="all" {{ ($entry_type ?? 'all') == 'all' ? 'selected' : '' }}>All Types</option>
+                                <option value="bank_cash" {{ ($entry_type ?? '') == 'bank_cash' ? 'selected' : '' }}>Bank + Cash</option>
                                 <option value="bank" {{ ($entry_type ?? '') == 'bank' ? 'selected' : '' }}>Bank</option>
                                 <option value="cash" {{ ($entry_type ?? '') == 'cash' ? 'selected' : '' }}>Cash</option>
                                 <option value="customer" {{ ($entry_type ?? '') == 'customer' ? 'selected' : '' }}>Customer</option>
@@ -269,6 +277,7 @@
                             </div>
                         </div>
                     </div>
+                    <input type="hidden" name="per_page" id="perPageHidden" value="{{ $perPage ?? 10 }}">
                 </form>
             </div>
         </div>
@@ -531,6 +540,32 @@
                     </table>
                 </div>
 
+                <!-- Summary: Total Credit, Total Debit, Net Balance on Right Side -->
+                <div class="row mt-3 px-3">
+                    <div class="col-md-6 offset-md-6">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="fw-semibold text-muted">Total Credit</span>
+                                    <span class="fw-bold text-success">PKR {{ number_format($totalCreditAmount ?? 0, 2) }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="fw-semibold text-muted">Total Debit</span>
+                                    <span class="fw-bold text-danger">PKR {{ number_format($totalDebitAmount ?? 0, 2) }}</span>
+                                </div>
+                                <hr class="my-2">
+                                <div class="d-flex justify-content-between">
+                                    <span class="fw-semibold">Net Balance</span>
+                                    <span class="fw-bold {{ ($totalCreditAmount ?? 0) - ($totalDebitAmount ?? 0) >= 0 ? 'text-success' : 'text-danger' }}">
+                                        PKR {{ number_format(abs(($totalCreditAmount ?? 0) - ($totalDebitAmount ?? 0)), 2) }}
+                                        {{ ($totalCreditAmount ?? 0) - ($totalDebitAmount ?? 0) >= 0 ? 'CR' : 'DR' }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Pagination -->
                 @if($daybooks->total() > 0)
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 p-3 border-top">
@@ -541,10 +576,10 @@
                             <div class="d-flex align-items-center gap-2">
                                 <label class="text-muted small mb-0">Per Page:</label>
                                 <select id="perPageSelect" class="form-select form-select-sm" style="width: 70px;">
-                                    <option value="10" {{ $daybooks->perPage() == 10 ? 'selected' : '' }}>10</option>
-                                    <option value="25" {{ $daybooks->perPage() == 25 ? 'selected' : '' }}>25</option>
-                                    <option value="50" {{ $daybooks->perPage() == 50 ? 'selected' : '' }}>50</option>
-                                    <option value="100" {{ $daybooks->perPage() == 100 ? 'selected' : '' }}>100</option>
+                                    <option value="10" {{ ($perPage ?? 10) == 10 ? 'selected' : '' }}>10</option>
+                                    <option value="25" {{ ($perPage ?? 10) == 25 ? 'selected' : '' }}>25</option>
+                                    <option value="50" {{ ($perPage ?? 10) == 50 ? 'selected' : '' }}>50</option>
+                                    <option value="100" {{ ($perPage ?? 10) == 100 ? 'selected' : '' }}>100</option>
                                 </select>
                             </div>
                         </div>
@@ -801,12 +836,11 @@ $(document).ready(function() {
         }, 300);
     });
     
-    // Per page select
+    // Per page select - update hidden field and submit form
     $('#perPageSelect').on('change', function() {
         var perPage = $(this).val();
-        var currentUrl = new URL(window.location.href);
-        currentUrl.searchParams.set('per_page', perPage);
-        window.location.href = currentUrl.toString();
+        $('#perPageHidden').val(perPage);
+        $('#filterForm').submit();
     });
 });
 </script>
