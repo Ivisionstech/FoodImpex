@@ -40,23 +40,28 @@ class BankController extends Controller
     public function store(StoreBankRequest $request)
     {
         try {
+            // Use selected date or current date
+            $bankDate = $request->bank_date ? date('Y-m-d 00:00:00', strtotime($request->bank_date)) : now();
+            
             $bank = Bank::create([
                 'uuid' => Str::uuid(),
                 'name' => $request->name,
                 'account_title' => $request->account_title,
                 'account_number' => $request->account_number,
                 'account_balance' => $request->account_balance,
-                'created_at' => now(),
+                'created_at' => $bankDate,
+                'updated_at' => $bankDate,
             ]);
             
             Daybook::create([
-                'transaction_date' => now(),
+                'transaction_date' => $bankDate,
                 'amount' => $request->account_balance,
                 'type' => 'transaction',
                 'description' => "Bank created with a balance of {$request->account_balance}",
                 'customer_transaction_id' => null,
                 'vendor_transaction_id' => null,
                 'expense_id' => null,
+                'created_at' => $bankDate,
             ]);
             
             return response()->json([
