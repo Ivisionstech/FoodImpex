@@ -290,12 +290,7 @@
                     <span class="badge bg-primary ms-2">{{ $daybooks->total() }}</span>
                 </h5>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-outline-secondary" onclick="window.print()">
-                        <i class="bx bx-printer me-1"></i> Print
-                    </button>
-                    <a href="{{ route('daybooks.create') }}" class="btn btn-primary">
-                        <i class="bx bx-plus me-1"></i> Add Expense
-                    </a>
+                    <!-- Print and Add Expense buttons removed -->
                 </div>
             </div>
 
@@ -320,35 +315,12 @@
                             @php $runningBalance = 0; @endphp
                             @forelse ($daybooks as $index => $daybook)
                                 @php
-                                    // Determine if this is a debit or credit based on description
-                                    $descLower = strtolower($daybook->description ?? '');
-                                    $isCredit = false;
-                                    $isDebit = false;
+                                    // Determine if this is a debit or credit based on status
+                                    // status = 0 means Credit, status = 1 means Debit
+                                    $isCredit = ($daybook->status == 0);
+                                    $isDebit = ($daybook->status == 1);
                                     
-                                    // Check description for credit keywords
-                                    if (strpos($descLower, 'credit') !== false || 
-                                        strpos($descLower, 'income') !== false || 
-                                        strpos($descLower, 'received') !== false ||
-                                        strpos($descLower, 'payment received') !== false) {
-                                        $isCredit = true;
-                                    } 
-                                    // Check description for debit keywords
-                                    elseif (strpos($descLower, 'debit') !== false || 
-                                            strpos($descLower, 'expense') !== false || 
-                                            strpos($descLower, 'payment') !== false ||
-                                            strpos($descLower, 'withdraw') !== false) {
-                                        $isDebit = true;
-                                    }
-                                    // If still not determined, use status field
-                                    else {
-                                        if ($daybook->status == 0) {
-                                            $isCredit = true;
-                                        } else {
-                                            $isDebit = true;
-                                        }
-                                    }
-                                    
-                                    // Clean description - remove "credit from" or "debit from" prefix
+                                    // Clean description
                                     $cleanDescription = $daybook->description ?? 'N/A';
                                     $cleanDescription = preg_replace('/^credit from\s*/i', '', $cleanDescription);
                                     $cleanDescription = preg_replace('/^debit from\s*/i', '', $cleanDescription);
@@ -360,7 +332,7 @@
                                     $debitAmount = $isDebit ? abs($daybook->amount) : 0;
                                     $creditAmount = $isCredit ? abs($daybook->amount) : 0;
                                     
-                                    // Update running balance
+                                    // Update running balance - CREDIT adds, DEBIT subtracts
                                     if ($isCredit) {
                                         $runningBalance += $creditAmount;
                                     } else {
@@ -368,6 +340,7 @@
                                     }
                                     
                                     // Determine Entry Type from database or description
+                                    $descLower = strtolower($daybook->description ?? '');
                                     $entryType = $daybook->type ?? 'transaction';
                                     if (empty($entryType) || $entryType == 'transaction') {
                                         if (strpos($descLower, 'customer') !== false || 
