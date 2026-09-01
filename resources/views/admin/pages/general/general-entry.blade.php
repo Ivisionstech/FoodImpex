@@ -35,11 +35,10 @@
                 <!-- Info Alert for Due Management -->
                 <div class="alert alert-info alert-dismissible fade show mb-4" role="alert">
                     <i class="bx bx-info-circle me-2"></i>
-                    <strong>Due Management System:</strong> If Debit amount exceeds account balance, the system will automatically:
+                    <strong>Due Management System:</strong> 
                     <ul class="mb-0 mt-2">
-                        <li>Debit the full amount (balance becomes negative)</li>
-                        <li>Create a DUE entry for the negative amount</li>
-                        <li>Track dues in Daybook, Customer, and Vendor transactions</li>
+                        <li><strong>Bank & Cash:</strong> Cannot go negative. System will block if balance is insufficient.</li>
+                        <li><strong>Customer & Vendor:</strong> Can go negative (creates DUE entry).</li>
                     </ul>
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
@@ -231,8 +230,18 @@
             margin-top: 5px;
             padding: 4px 8px;
             border-radius: 4px;
-            background-color: #fff3cd;
-            color: #856404;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .debit-error {
+            font-size: 11px;
+            margin-top: 5px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
     </style>
 
@@ -311,26 +320,84 @@
                         templateSelection: formatAccountSelection
                     }).on('change', function() {
                         checkBalanceWarning($(this));
+                        // Clear any existing warnings when account changes
+                        let row = $(this).closest('.journal-entry-row');
+                        row.find('.debit-error').remove();
+                        row.find('.debit-warning').remove();
+                        // Re-validate debit amount
+                        let debitInput = row.find('.debit-amount');
+                        if (debitInput.val() > 0) {
+                            validateDebitAmount(debitInput);
+                        }
                     });
+                }
+            }
+
+            function isRestrictedAccount(accountType) {
+                return accountType === 'bank' || accountType === 'cash';
+            }
+
+            function validateDebitAmount(debitInput) {
+                let row = debitInput.closest('.journal-entry-row');
+                let selectedOption = row.find('.account-select option:selected');
+                let accountType = selectedOption.data('type');
+                let balance = parseFloat(selectedOption.data('balance') || 0);
+                let debitVal = parseFloat(debitInput.val()) || 0;
+                
+                // Remove existing warnings
+                row.find('.debit-warning').remove();
+                row.find('.debit-error').remove();
+                
+                // Only validate for Bank and Cash accounts
+                if (isRestrictedAccount(accountType)) {
+                    if (debitVal > balance && balance >= 0 && debitVal > 0) {
+                        // Show error - cannot exceed balance for Bank/Cash
+                        let errorHtml = `<small class="debit-error"><i class="fas fa-times-circle me-1"></i> <strong>Error:</strong> Insufficient balance! Available: PKR ${balance.toLocaleString()}. Debit cannot exceed balance for Bank/Cash accounts.</small>`;
+                        debitInput.after(errorHtml);
+                        debitInput.addClass('is-invalid');
+                        return false;
+                    } else {
+                        debitInput.removeClass('is-invalid');
+                        return true;
+                    }
+                } else {
+                    // For Customer and Vendor - show warning but allow
+                    if (debitVal > balance && balance >= 0 && debitVal > 0) {
+                        let warningHtml = `<small class="debit-warning"><i class="fas fa-exclamation-triangle me-1"></i> Warning: Debit (${debitVal.toLocaleString()}) exceeds balance (${balance.toLocaleString()}). This will create a DUE entry for ${(debitVal - balance).toLocaleString()}</small>`;
+                        debitInput.after(warningHtml);
+                        debitInput.removeClass('is-invalid');
+                        return true;
+                    } else {
+                        debitInput.removeClass('is-invalid');
+                        return true;
+                    }
                 }
             }
 
             function checkBalanceWarning(selectElement) {
                 let selectedOption = selectElement.find('option:selected');
                 let balance = parseFloat(selectedOption.data('balance') || 0);
+                let accountType = selectedOption.data('type');
                 let row = selectElement.closest('.journal-entry-row');
                 let existingWarning = row.find('.balance-warning');
                 
-                if (balance < 0) {
-                    if (existingWarning.length === 0) {
-                        row.find('.col-md-4').append(`<div class="balance-warning mt-2"><i class="fas fa-exclamation-triangle me-1"></i> <strong>Due Alert:</strong> This account has negative balance of PKR ${Math.abs(balance).toLocaleString()}. Previous dues need to be cleared.</div>`);
-                    }
-                } else if (balance === 0) {
-                    if (existingWarning.length === 0) {
-                        row.find('.col-md-4').append(`<div class="balance-warning mt-2"><i class="fas fa-info-circle me-1"></i> <strong>Zero Balance:</strong> Any debit will create a due entry.</div>`);
+                // Remove existing warning
+                existingWarning.remove();
+                
+                // Only show balance warning for Bank and Cash
+                if (isRestrictedAccount(accountType)) {
+                    if (balance < 0) {
+                        row.find('.col-md-4').append(`<div class="balance-warning mt-2"><i class="fas fa-exclamation-triangle me-1"></i> <strong>Alert:</strong> This account has negative balance of PKR ${Math.abs(balance).toLocaleString()}. Please check your transactions.</div>`);
+                    } else if (balance === 0) {
+                        row.find('.col-md-4').append(`<div class="balance-warning mt-2"><i class="fas fa-info-circle me-1"></i> <strong>Zero Balance:</strong> Any debit will be blocked as Bank/Cash cannot go negative.</div>`);
                     }
                 } else {
-                    existingWarning.remove();
+                    // For Customer and Vendor - show due info
+                    if (balance < 0) {
+                        row.find('.col-md-4').append(`<div class="balance-warning mt-2"><i class="fas fa-exclamation-triangle me-1"></i> <strong>Due Alert:</strong> This account has negative balance of PKR ${Math.abs(balance).toLocaleString()}. Previous dues need to be cleared.</div>`);
+                    } else if (balance === 0) {
+                        row.find('.col-md-4').append(`<div class="balance-warning mt-2"><i class="fas fa-info-circle me-1"></i> <strong>Zero Balance:</strong> Any debit will create a due entry.</div>`);
+                    }
                 }
             }
 
@@ -495,20 +562,8 @@
                 let creditInput = row.find('.credit-amount');
                 if (debitVal > 0 && parseFloat(creditInput.val()) > 0) creditInput.val(0);
                 
-                // Show warning if debit exceeds available balance
-                let selectedAccount = row.find('.account-select option:selected');
-                let balance = parseFloat(selectedAccount.data('balance') || 0);
-                if (debitVal > balance && balance >= 0 && debitVal > 0) {
-                    let warningExists = row.find('.debit-warning');
-                    if (warningExists.length === 0) {
-                        row.find('.debit-amount').after(`<small class="debit-warning"><i class="fas fa-exclamation-triangle me-1"></i> Warning: Debit (${debitVal.toLocaleString()}) exceeds balance (${balance.toLocaleString()}). This will create a DUE entry for ${(debitVal - balance).toLocaleString()}</small>`);
-                    } else {
-                        warningExists.html(`<i class="fas fa-exclamation-triangle me-1"></i> Warning: Debit (${debitVal.toLocaleString()}) exceeds balance (${balance.toLocaleString()}). This will create a DUE entry for ${(debitVal - balance).toLocaleString()}`);
-                    }
-                } else {
-                    row.find('.debit-warning').remove();
-                }
-                
+                // Validate debit amount based on account type
+                validateDebitAmount($(this));
                 calculateTotals();
             });
 
@@ -520,9 +575,23 @@
                 calculateTotals();
             });
 
+            // Also validate on account change
+            $(document).on('change', '.account-select', function() {
+                let row = $(this).closest('.journal-entry-row');
+                let debitInput = row.find('.debit-amount');
+                if (parseFloat(debitInput.val()) > 0) {
+                    validateDebitAmount(debitInput);
+                }
+            });
+
             function calculateTotals() {
                 let totalDebit = 0, totalCredit = 0;
-                $('.debit-amount').each(function() { totalDebit += parseFloat($(this).val()) || 0; });
+                $('.debit-amount').each(function() { 
+                    // Only count if no error on the field
+                    if (!$(this).hasClass('is-invalid')) {
+                        totalDebit += parseFloat($(this).val()) || 0; 
+                    }
+                });
                 $('.credit-amount').each(function() { totalCredit += parseFloat($(this).val()) || 0; });
                 
                 $('#totalDebitDisplay').text('PKR ' + totalDebit.toLocaleString('en-US', {minimumFractionDigits: 2}));
