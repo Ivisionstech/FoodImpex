@@ -12,6 +12,7 @@
                     <thead>
                         <tr>
                             <th>#</th>
+                            <th>Date</th>
                             <th>Name</th>
                             <th>Account Title</th>
                             <th>Account Number</th>
@@ -23,12 +24,19 @@
                         @foreach ($banks as $bank)
                             <tr>
                                 <td>{{ $loop->iteration }}</td>
+                                   <td>
+                                    <div class="d-flex flex-column">
+                                        <span class="fw-semibold">{{ date('d-m-Y', strtotime($bank->created_at)) }}</span>
+                                        <small class="text-muted">{{ date('h:i A', strtotime($bank->created_at)) }}</small>
+                                    </div>
+                                </td>
                                 <td><a href="{{ route('banks.view', $bank->uuid) }}">{{ $bank->name }}</a>
                                 </td>
                                 <td>{{ $bank->account_title }}</td>
                                 <td>{{ $bank->account_number }}</td>
                                 <td><span class="badge bg-label-primary me-1">PKR
                                         {{ number_format($bank->account_balance, 2) }}</span></td>
+                                
                                 <td>
                                     <div class="dropdown">
                                         <button class="btn dropdown-toggle" type="button" id="dropdownMenuButton2"

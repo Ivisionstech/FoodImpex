@@ -15,7 +15,7 @@ class BankController extends Controller
     public function list()
     {
         try {
-            $banks = Bank::paginate(10);
+            $banks = Bank::orderBy('created_at', 'desc')->paginate(10);
             return view('admin.pages.banks.list', compact('banks'));
         } catch (\Throwable $th) {
             return redirect()->back()->with([
@@ -40,13 +40,15 @@ class BankController extends Controller
     public function store(StoreBankRequest $request)
     {
         try {
-            Bank::create([
+            $bank = Bank::create([
                 'uuid' => Str::uuid(),
                 'name' => $request->name,
                 'account_title' => $request->account_title,
                 'account_number' => $request->account_number,
                 'account_balance' => $request->account_balance,
+                'created_at' => now(),
             ]);
+            
             Daybook::create([
                 'transaction_date' => now(),
                 'amount' => $request->account_balance,
@@ -56,6 +58,7 @@ class BankController extends Controller
                 'vendor_transaction_id' => null,
                 'expense_id' => null,
             ]);
+            
             return response()->json([
                 'status' => true,
                 'message' => 'Bank created successfully',
