@@ -16,8 +16,13 @@ class CashController extends Controller
     public function list()
     {
         try {
-            $cash = Cash::first();
-            return view('admin.pages.cash.list', compact('cash'));
+            // Get all cash records
+            $cashes = Cash::orderBy('created_at', 'desc')->get();
+            
+            // Calculate total balance
+            $totalBalance = Cash::sum('balance');
+            
+            return view('admin.pages.cash.list', compact('cashes', 'totalBalance'));
         } catch (\Throwable $th) {
             return redirect()->back()->with([
                 'status' => false,
@@ -26,33 +31,49 @@ class CashController extends Controller
         }
     }
 
-
-
     public function store(Request $request)
     {
         try {
+            // Validate request
+            $request->validate([
+                'balance' => 'required|numeric|min:0',
+                'cash_date' => 'nullable|date'
+            ]);
+
             DB::beginTransaction();
+            
+            // Use selected date or current date
+            $cashDate = $request->cash_date ? date('Y-m-d 00:00:00', strtotime($request->cash_date)) : now();
+            
             $cash = Cash::create([
                 'uuid' => Str::uuid(),
                 'balance' => $request->balance,
+                'created_at' => $cashDate,
+                'updated_at' => $cashDate,
             ]);
+            
             CashTransaction::create([
                 'cash_id' => $cash->id,
                 'transaction_type' => 'credit',
                 'amount' => $request->balance,
                 'balance' => $request->balance,
                 'description' => 'Initial Cash',
+                'created_at' => $cashDate,
             ]);
+            
             Daybook::create([
-                'transaction_date' => now(),
+                'transaction_date' => $cashDate,
                 'amount' => $request->balance,
                 'type' => 'transaction',
                 'description' => "Cash created with a balance of {$request->balance}",
                 'customer_transaction_id' => null,
                 'vendor_transaction_id' => null,
                 'expense_id' => null,
+                'created_at' => $cashDate,
             ]);
+            
             DB::commit();
+            
             return response()->json([
                 'status' => true,
                 'message' => 'Cash created successfully',
@@ -60,10 +81,10 @@ class CashController extends Controller
             ]);
         } catch (\Throwable $th) {
             DB::rollBack();
-            Log::info($th->getMessage());
+            Log::error('Cash store error: ' . $th->getMessage());
             return response()->json([
                 'status' => false,
-                'message' => $th->getMessage(),
+                'message' => 'Something went wrong: ' . $th->getMessage(),
             ]);
         }
     }
@@ -71,7 +92,12 @@ class CashController extends Controller
     public function view(Request $request)
     {
         try {
-            $cash = Cash::with('cashTransactions')->first(); // یا جیسا آپ لے رہے ہیں
+            // Get the latest cash for view
+            $cash = Cash::with('cashTransactions')->latest()->first();
+
+            if (!$cash) {
+                return redirect()->route('cash.list')->with('error', 'No cash found');
+            }
 
             $transactionsQuery = $cash->cashTransactions();
 
@@ -99,12 +125,37 @@ class CashController extends Controller
             ]);
         }
     }
+
     public function addCash(Request $request)
     {
         try {
+            // Validate request
+            $request->validate([
+                'amount' => 'required|numeric|min:0',
+                'cash_date' => 'nullable|date',
+                'description' => 'nullable|string'
+            ]);
+
             DB::beginTransaction();
-            $cash = Cash::first();
+            
+            // Use selected date or current date
+            $cashDate = $request->cash_date ? date('Y-m-d 00:00:00', strtotime($request->cash_date)) : now();
+            
+            // Get the latest cash or create new if none exists
+            $cash = Cash::latest()->first();
+            
+            if (!$cash) {
+                // Create new cash if none exists
+                $cash = Cash::create([
+                    'uuid' => Str::uuid(),
+                    'balance' => 0,
+                    'created_at' => $cashDate,
+                    'updated_at' => $cashDate,
+                ]);
+            }
+            
             $cash->increment('balance', $request->amount);
+            $cash->update(['updated_at' => $cashDate]);
 
             $transaction = CashTransaction::create([
                 'cash_id' => $cash->id,
@@ -112,19 +163,22 @@ class CashController extends Controller
                 'amount' => $request->amount,
                 'balance' => $cash->balance,
                 'description' => $request->description,
+                'created_at' => $cashDate,
             ]);
 
             Daybook::create([
-                'transaction_date' => now(),
+                'transaction_date' => $cashDate,
                 'amount' => $request->amount,
                 'type' => 'transaction',
                 'description' => "Cash Added: {$request->description}",
+                'created_at' => $cashDate,
             ]);
 
             DB::commit();
             return response()->json([
                 'status' => true,
                 'message' => 'Cash added successfully',
+                'redirect' => route('cash.list'),
             ]);
         } catch (\Throwable $th) {
             DB::rollBack();
@@ -138,8 +192,27 @@ class CashController extends Controller
     public function deductCash(Request $request)
     {
         try {
+            // Validate request
+            $request->validate([
+                'amount' => 'required|numeric|min:0',
+                'cash_date' => 'nullable|date',
+                'description' => 'nullable|string'
+            ]);
+
             DB::beginTransaction();
-            $cash = Cash::first();
+            
+            // Use selected date or current date
+            $cashDate = $request->cash_date ? date('Y-m-d 00:00:00', strtotime($request->cash_date)) : now();
+            
+            // Get the latest cash
+            $cash = Cash::latest()->first();
+
+            if (!$cash) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'No cash found',
+                ]);
+            }
 
             if ($cash->balance < $request->amount) {
                 return response()->json([
@@ -149,6 +222,7 @@ class CashController extends Controller
             }
 
             $cash->decrement('balance', $request->amount);
+            $cash->update(['updated_at' => $cashDate]);
 
             $transaction = CashTransaction::create([
                 'cash_id' => $cash->id,
@@ -156,19 +230,22 @@ class CashController extends Controller
                 'amount' => $request->amount,
                 'balance' => $cash->balance,
                 'description' => $request->description,
+                'created_at' => $cashDate,
             ]);
 
             Daybook::create([
-                'transaction_date' => now(),
+                'transaction_date' => $cashDate,
                 'amount' => $request->amount,
                 'type' => 'transaction',
                 'description' => "Cash Deducted: {$request->description}",
+                'created_at' => $cashDate,
             ]);
 
             DB::commit();
             return response()->json([
                 'status' => true,
                 'message' => 'Cash deducted successfully',
+                'redirect' => route('cash.list'),
             ]);
         } catch (\Throwable $th) {
             DB::rollBack();
