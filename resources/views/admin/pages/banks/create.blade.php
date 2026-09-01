@@ -36,7 +36,7 @@
                         <div class="col-md-6">
                             <label class="form-label" for="account_balance">Account Balance <span
                                     class="text-danger">*</span></label>
-                            <input type="number" class="form-control @error('account_balance') is-invalid @enderror"
+                            <input type="number" step="0.01" class="form-control @error('account_balance') is-invalid @enderror"
                                 id="account_balance" name="account_balance" value="0" />
                             <div class="invalid-feedback" id="account_balance-error"></div>
                         </div>
@@ -45,11 +45,18 @@
                             <input type="date" class="form-control" id="bank_date" name="bank_date" value="{{ date('Y-m-d') }}" />
                             <small class="text-muted">Leave empty to use current date.</small>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Transaction Type</label>
+                            <div class="alert alert-info mb-0">
+                                <i class="bx bx-info-circle me-1"></i> 
+                                <strong>Credit (CR)</strong> - Bank opening balance will be added as credit
+                            </div>
+                        </div>
                     </div>
                     <div class="row">
                         <div class="col-12">
                             <button type="button" id="submitButton" class="btn btn-primary-custom">
-                                <i class="bx bx-check me-1"></i> Create Bank
+                                <i class="bx bx-check me-1"></i> Create Bank (CR)
                             </button>
                             <a href="{{ route('banks.list') }}" class="btn btn-secondary">Cancel</a>
                         </div>

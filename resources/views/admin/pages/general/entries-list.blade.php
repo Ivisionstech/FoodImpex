@@ -198,10 +198,9 @@
                             <tr>
                                 <th width="5%">#</th>
                                 <th width="12%">Date</th>
-                                <th width="25%">Description</th>
-                                <th width="18%">Account</th>
+                                <th width="30%">Description</th>
+                                <th width="20%">Account</th>
                                 <th width="12%">Approval</th>
-                                <th width="10%">Type</th>
                                 <th width="10%">Amount</th>
                                 <th width="8%" class="text-center">Action</th>
                             </tr>
@@ -229,30 +228,18 @@
                                         $approvalClass = 'warning';
                                     }
                                     
-                                    // Determine amount type badge
-                                    $amountBadge = '';
+                                    // Determine amount type for amount display
                                     $amountClass = '';
-                                    $amountIcon = '';
                                     if ($isDue && $entry->approval_status == 'pending') {
-                                        $amountBadge = 'Due';
-                                        $amountClass = 'danger';
-                                        $amountIcon = 'bx-error-circle';
+                                        $amountClass = 'text-danger';
                                     } elseif ($isClearedDue) {
-                                        $amountBadge = 'Cleared';
-                                        $amountClass = 'info';
-                                        $amountIcon = 'bx-check-circle';
+                                        $amountClass = 'text-info';
                                     } elseif ($isDebit) {
-                                        $amountBadge = 'Debit';
-                                        $amountClass = 'danger';
-                                        $amountIcon = 'bx-arrow-down';
+                                        $amountClass = 'text-danger';
                                     } elseif ($isCredit) {
-                                        $amountBadge = 'Credit';
-                                        $amountClass = 'success';
-                                        $amountIcon = 'bx-arrow-up';
+                                        $amountClass = 'text-success';
                                     } else {
-                                        $amountBadge = 'Pending';
-                                        $amountClass = 'secondary';
-                                        $amountIcon = 'bx-time';
+                                        $amountClass = 'text-dark';
                                     }
                                     
                                     // Determine account name for single entries
@@ -363,13 +350,7 @@
                                         </span>
                                     </td>
                                     <td>
-                                        <span class="badge bg-{{ $amountClass }} bg-opacity-10 text-{{ $amountClass }} px-3 py-2 rounded-pill">
-                                            <i class="bx {{ $amountIcon }} me-1"></i>
-                                            {{ $amountBadge }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="fw-bold {{ $isDue && $entry->approval_status == 'pending' ? 'text-danger' : ($isDebit ? 'text-danger' : ($isCredit ? 'text-success' : 'text-dark')) }}">
+                                        <div class="fw-bold {{ $amountClass }}">
                                             PKR {{ number_format($amount, 0) }}
                                         </div>
                                     </td>
@@ -429,7 +410,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="8" class="text-center py-5">
+                                    <td colspan="7" class="text-center py-5">
                                         <div class="mb-3">
                                             <i class="bx bx-receipt fs-1 text-muted"></i>
                                         </div>

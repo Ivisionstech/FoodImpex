@@ -5,7 +5,9 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Banks</h5>
-                <a href="{{ route('banks.create') }}" class="btn btn-primary"> <i class="bx bx-plus me-1"></i> New Bank</a>
+                <a href="{{ route('banks.create') }}" class="btn btn-primary-custom"> 
+                    <i class="bx bx-plus me-1"></i> New Bank
+                </a>
             </div>
             <div class="table-responsive text-nowrap" style="min-height: 320px;">
                 <table class="table">
@@ -17,6 +19,7 @@
                             <th>Account Title</th>
                             <th>Account Number</th>
                             <th>Account Balance</th>
+                            <th>Type</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -24,7 +27,7 @@
                         @foreach ($banks as $bank)
                             <tr>
                                 <td>{{ $loop->iteration }}</td>
-                                   <td>
+                                <td>
                                     <div class="d-flex flex-column">
                                         <span class="fw-semibold">{{ date('d-m-Y', strtotime($bank->created_at)) }}</span>
                                         <small class="text-muted">{{ date('h:i A', strtotime($bank->created_at)) }}</small>
@@ -36,7 +39,11 @@
                                 <td>{{ $bank->account_number }}</td>
                                 <td><span class="badge bg-label-primary me-1">PKR
                                         {{ number_format($bank->account_balance, 2) }}</span></td>
-                                
+                                <td>
+                                    <span class="badge bg-label-info me-1">
+                                        <i class="bx bx-arrow-up me-1"></i> CR
+                                    </span>
+                                </td>
                                 <td>
                                     <div class="dropdown">
                                         <button class="btn dropdown-toggle" type="button" id="dropdownMenuButton2"
@@ -67,3 +74,37 @@
         </div>
     </div>
 @endsection
+
+@push('scripts')
+<style>
+    /* Custom Button Schema */
+    .btn-primary-custom {
+        background: linear-gradient(45deg, #696cff, #5a5dff) !important;
+        border: none !important;
+        color: #ffffff !important;
+        box-shadow: 0 2px 6px rgba(105, 108, 255, 0.4) !important;
+        transition: all 0.3s ease !important;
+        padding: 0.5rem 1.2rem !important;
+        border-radius: 0.375rem !important;
+        font-weight: 500 !important;
+    }
+    
+    .btn-primary-custom:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(105, 108, 255, 0.5) !important;
+        color: #ffffff !important;
+        background: linear-gradient(45deg, #5a5dff, #4a4de0) !important;
+    }
+    
+    .btn-primary-custom:active {
+        transform: translateY(0px) !important;
+        box-shadow: 0 2px 4px rgba(105, 108, 255, 0.3) !important;
+    }
+    
+    .btn-primary-custom:disabled {
+        opacity: 0.7 !important;
+        cursor: not-allowed !important;
+        transform: none !important;
+    }
+</style>
+@endpush

@@ -53,15 +53,19 @@ class BankController extends Controller
                 'updated_at' => $bankDate,
             ]);
             
+            // Create Daybook entry with status = 0 (CREDIT) for bank opening balance
             Daybook::create([
                 'transaction_date' => $bankDate,
                 'amount' => $request->account_balance,
+                'status' => 0, // 0 = Credit (CR)
                 'type' => 'transaction',
-                'description' => "Bank created with a balance of {$request->account_balance}",
+                'description' => "Bank created with a balance of {$request->account_balance} - Credit",
                 'customer_transaction_id' => null,
                 'vendor_transaction_id' => null,
                 'expense_id' => null,
                 'created_at' => $bankDate,
+                'credit_type' => 'bank',
+                'credit_id' => $bank->id,
             ]);
             
             return response()->json([
