@@ -52,6 +52,7 @@ class CashController extends Controller
                 'updated_at' => $cashDate,
             ]);
             
+            // Create cash transaction as CREDIT by default
             CashTransaction::create([
                 'cash_id' => $cash->id,
                 'transaction_type' => 'credit',
@@ -61,15 +62,19 @@ class CashController extends Controller
                 'created_at' => $cashDate,
             ]);
             
+            // Create Daybook entry with status = 0 (CREDIT)
             Daybook::create([
                 'transaction_date' => $cashDate,
                 'amount' => $request->balance,
+                'status' => 0, // 0 = Credit (CR)
                 'type' => 'transaction',
-                'description' => "Cash created with a balance of {$request->balance}",
+                'description' => "Cash created with a balance of {$request->balance} - Credit",
                 'customer_transaction_id' => null,
                 'vendor_transaction_id' => null,
                 'expense_id' => null,
                 'created_at' => $cashDate,
+                'credit_type' => 'cash',
+                'credit_id' => $cash->id,
             ]);
             
             DB::commit();
@@ -157,6 +162,7 @@ class CashController extends Controller
             $cash->increment('balance', $request->amount);
             $cash->update(['updated_at' => $cashDate]);
 
+            // Create cash transaction as CREDIT by default
             $transaction = CashTransaction::create([
                 'cash_id' => $cash->id,
                 'transaction_type' => 'credit',
@@ -166,12 +172,19 @@ class CashController extends Controller
                 'created_at' => $cashDate,
             ]);
 
+            // Create Daybook entry with status = 0 (CREDIT)
             Daybook::create([
                 'transaction_date' => $cashDate,
                 'amount' => $request->amount,
+                'status' => 0, // 0 = Credit (CR)
                 'type' => 'transaction',
-                'description' => "Cash Added: {$request->description}",
+                'description' => "Cash Added: {$request->description} - Credit",
+                'customer_transaction_id' => null,
+                'vendor_transaction_id' => null,
+                'expense_id' => null,
                 'created_at' => $cashDate,
+                'credit_type' => 'cash',
+                'credit_id' => $cash->id,
             ]);
 
             DB::commit();
@@ -224,6 +237,7 @@ class CashController extends Controller
             $cash->decrement('balance', $request->amount);
             $cash->update(['updated_at' => $cashDate]);
 
+            // Create cash transaction as DEBIT for deduction
             $transaction = CashTransaction::create([
                 'cash_id' => $cash->id,
                 'transaction_type' => 'debit',
@@ -233,12 +247,19 @@ class CashController extends Controller
                 'created_at' => $cashDate,
             ]);
 
+            // Create Daybook entry with status = 1 (DEBIT)
             Daybook::create([
                 'transaction_date' => $cashDate,
                 'amount' => $request->amount,
+                'status' => 1, // 1 = Debit (DR)
                 'type' => 'transaction',
-                'description' => "Cash Deducted: {$request->description}",
+                'description' => "Cash Deducted: {$request->description} - Debit",
+                'customer_transaction_id' => null,
+                'vendor_transaction_id' => null,
+                'expense_id' => null,
                 'created_at' => $cashDate,
+                'debit_type' => 'cash',
+                'debit_id' => $cash->id,
             ]);
 
             DB::commit();

@@ -102,6 +102,25 @@ class GeneralTransactionController extends Controller
             }
         })->values();
         
+        // Apply filters if present
+        if (request('approval_status')) {
+            $groupedEntries = $groupedEntries->filter(function($entry) {
+                return $entry->approval_status == request('approval_status');
+            });
+        }
+        
+        if (request('from_date')) {
+            $groupedEntries = $groupedEntries->filter(function($entry) {
+                return $entry->transaction_date >= request('from_date');
+            });
+        }
+        
+        if (request('to_date')) {
+            $groupedEntries = $groupedEntries->filter(function($entry) {
+                return $entry->transaction_date <= request('to_date') . ' 23:59:59';
+            });
+        }
+        
         // Paginate the grouped entries
         $perPage = request('per_page', 10);
         $currentPage = request('page', 1);
@@ -171,7 +190,7 @@ class GeneralTransactionController extends Controller
     }
 
     /**
-     * Display the specified entry - FIXED
+     * Display the specified entry
      */
     public function show($id)
     {
@@ -186,185 +205,192 @@ class GeneralTransactionController extends Controller
     }
     
     /**
-     * Show the form for editing the specified entry - FIXED
+     * Show the form for editing the specified entry - FIXED for BATCH
      */
-   /**
- * Show the form for editing the specified entry - FIXED for BATCH
- */
-public function edit($id)
-{
-    try {
-        $entry = Daybook::findOrFail($id);
-        
-        // Check if this entry is part of a batch
-        $batchId = $entry->batch_id;
-        $entries = [];
-        
-        if ($batchId) {
-            // Load all entries in this batch
-            $entries = Daybook::where('batch_id', $batchId)
-                ->orderBy('id', 'asc')
-                ->get();
-        } else {
-            // Single entry (no batch)
-            $entries = collect([$entry]);
+    public function edit($id)
+    {
+        try {
+            $entry = Daybook::findOrFail($id);
+            
+            // Check if this entry is part of a batch
+            $batchId = $entry->batch_id;
+            $entries = [];
+            
+            if ($batchId) {
+                // Load all entries in this batch
+                $entries = Daybook::where('batch_id', $batchId)
+                    ->orderBy('id', 'asc')
+                    ->get();
+            } else {
+                // Single entry (no batch)
+                $entries = collect([$entry]);
+            }
+            
+            // Get all necessary data for the form
+            $customers = Customer::where('active', 1)->orderBy('name')->get();
+            $vendors = Vendor::where('active', 1)->orderBy('company_name')->get();
+            $banks = Bank::orderBy('name')->get();
+            $cash = Cash::first();
+            $expenses = \App\Models\Expense::all();
+            
+            return view('admin.pages.general.edit', compact('entries', 'customers', 'vendors', 'banks', 'cash', 'expenses', 'batchId', 'entry'));
+            
+        } catch (\Throwable $th) {
+            \Log::error('Edit entry error: ' . $th->getMessage());
+            return redirect()->route('general-transactions.index')->with('error', 'Entry not found');
         }
-        
-        // Get all necessary data for the form
-        $customers = Customer::where('active', 1)->orderBy('name')->get();
-        $vendors = Vendor::where('active', 1)->orderBy('company_name')->get();
-        $banks = Bank::orderBy('name')->get();
-        $cash = Cash::first();
-        $expenses = \App\Models\Expense::all();
-        
-        return view('admin.pages.general.edit', compact('entries', 'customers', 'vendors', 'banks', 'cash', 'expenses', 'batchId', 'entry'));
-        
-    } catch (\Throwable $th) {
-        \Log::error('Edit entry error: ' . $th->getMessage());
-        return redirect()->route('general-transactions.index')->with('error', 'Entry not found');
     }
-}
 
-/**
- * Update the specified entry - FIXED for BATCH
- */
-public function update(Request $request, $id)
-{
-    try {
-        DB::beginTransaction();
-        
-        $entry = Daybook::findOrFail($id);
-        
-        // Get the batch_id if it exists
-        $batchId = $entry->batch_id;
-        
-        // Validate the request
-        $request->validate([
-            'transaction_date' => 'required|date',
-            'account_ids' => 'required|array',
-            'account_ids.*' => 'required|string',
-            'debit_amounts' => 'required|array',
-            'credit_amounts' => 'required|array',
-            'descriptions' => 'array',
-        ]);
-        
-        $date = $request->input('transaction_date');
-        $accountIds = $request->input('account_ids', []);
-        $debitAmounts = $request->input('debit_amounts', []);
-        $creditAmounts = $request->input('credit_amounts', []);
-        $descriptions = $request->input('descriptions', []);
-        
-        // If this is a batch entry, get all entries in the batch
-        $oldEntries = [];
-        if ($batchId) {
-            $oldEntries = Daybook::where('batch_id', $batchId)->get();
-        } else {
-            $oldEntries = collect([$entry]);
-        }
-        
-        // Reverse previous transaction effects for all entries
-        foreach ($oldEntries as $oldEntry) {
-            if ($oldEntry->debit_type && $oldEntry->debit_id) {
-                $this->reverseTransaction($oldEntry->debit_type, $oldEntry->debit_id, $oldEntry->amount, 'debit');
-            }
-            if ($oldEntry->credit_type && $oldEntry->credit_id) {
-                $this->reverseTransaction($oldEntry->credit_type, $oldEntry->credit_id, $oldEntry->amount, 'credit');
-            }
+    /**
+     * Update the specified entry - FIXED for BATCH
+     */
+    public function update(Request $request, $id)
+    {
+        try {
+            DB::beginTransaction();
             
-            // Delete related transactions
-            if ($oldEntry->customer_transaction_id) {
-                CustomerTransaction::find($oldEntry->customer_transaction_id)?->delete();
-            }
-            if ($oldEntry->vendor_transaction_id) {
-                VendorTransaction::find($oldEntry->vendor_transaction_id)?->delete();
-            }
-        }
-        
-        // Delete all old entries in the batch
-        Daybook::where('batch_id', $batchId)->delete();
-        
-        // Generate a new batch ID for the updated entries
-        $newBatchId = Str::uuid()->toString();
-        
-        // Now create new entries with updated data
-        $entriesSaved = 0;
-        
-        foreach ($accountIds as $index => $accountId) {
-            if (empty($accountId)) {
-                continue;
-            }
+            $entry = Daybook::findOrFail($id);
             
-            $amount = 0;
-            $type = '';
+            // Get the batch_id if it exists
+            $batchId = $entry->batch_id;
             
-            if (isset($debitAmounts[$index]) && $debitAmounts[$index] > 0) {
-                $amount = $debitAmounts[$index];
-                $type = 'debit';
-            } elseif (isset($creditAmounts[$index]) && $creditAmounts[$index] > 0) {
-                $amount = $creditAmounts[$index];
-                $type = 'credit';
+            // Validate the request
+            $request->validate([
+                'transaction_date' => 'required|date',
+                'account_ids' => 'required|array',
+                'account_ids.*' => 'required|string',
+                'debit_amounts' => 'required|array',
+                'credit_amounts' => 'required|array',
+                'descriptions' => 'array',
+            ]);
+            
+            $date = $request->input('transaction_date');
+            $accountIds = $request->input('account_ids', []);
+            $debitAmounts = $request->input('debit_amounts', []);
+            $creditAmounts = $request->input('credit_amounts', []);
+            $descriptions = $request->input('descriptions', []);
+            
+            // If this is a batch entry, get all entries in the batch
+            $oldEntries = [];
+            if ($batchId) {
+                $oldEntries = Daybook::where('batch_id', $batchId)->get();
             } else {
-                continue;
+                $oldEntries = collect([$entry]);
             }
             
-            $parts = explode('_', $accountId);
-            if (count($parts) != 2) {
-                continue;
+            // Reverse previous transaction effects for all entries
+            foreach ($oldEntries as $oldEntry) {
+                if ($oldEntry->debit_type && $oldEntry->debit_id) {
+                    $this->reverseTransaction($oldEntry->debit_type, $oldEntry->debit_id, $oldEntry->amount, 'debit');
+                }
+                if ($oldEntry->credit_type && $oldEntry->credit_id) {
+                    $this->reverseTransaction($oldEntry->credit_type, $oldEntry->credit_id, $oldEntry->amount, 'credit');
+                }
+                
+                // Delete related transactions
+                if ($oldEntry->customer_transaction_id) {
+                    CustomerTransaction::find($oldEntry->customer_transaction_id)?->delete();
+                }
+                if ($oldEntry->vendor_transaction_id) {
+                    VendorTransaction::find($oldEntry->vendor_transaction_id)?->delete();
+                }
             }
             
-            $accountType = $parts[0];
-            $accountIdNum = $parts[1];
-            $description = isset($descriptions[$index]) ? $descriptions[$index] : '';
+            // Delete all old entries in the batch
+            Daybook::where('batch_id', $batchId)->delete();
             
-            // Create new daybook entry
-            $daybook = new Daybook();
-            $daybook->batch_id = $newBatchId;
-            $daybook->transaction_date = $date;
-            $daybook->amount = $amount;
-            $daybook->status = 1;
-            $daybook->type = 'transaction';
-            $daybook->approval_status = 'approved';
-            $daybook->description = $description . ' - ' . $type . ' from ' . $accountType;
+            // Generate a new batch ID for the updated entries
+            $newBatchId = Str::uuid()->toString();
             
-            if ($type == 'debit') {
-                $daybook->debit_type = $accountType;
-                $daybook->debit_id = $accountIdNum;
+            // Check if user is admin
+            $isAdmin = auth()->user()->role == 'admin';
+            $approvalStatus = $isAdmin ? 'approved' : 'pending';
+            
+            // Now create new entries with updated data
+            $entriesSaved = 0;
+            
+            foreach ($accountIds as $index => $accountId) {
+                if (empty($accountId)) {
+                    continue;
+                }
+                
+                $amount = 0;
+                $type = '';
+                
+                if (isset($debitAmounts[$index]) && $debitAmounts[$index] > 0) {
+                    $amount = $debitAmounts[$index];
+                    $type = 'debit';
+                } elseif (isset($creditAmounts[$index]) && $creditAmounts[$index] > 0) {
+                    $amount = $creditAmounts[$index];
+                    $type = 'credit';
+                } else {
+                    continue;
+                }
+                
+                $parts = explode('_', $accountId);
+                if (count($parts) != 2) {
+                    continue;
+                }
+                
+                $accountType = $parts[0];
+                $accountIdNum = $parts[1];
+                $description = isset($descriptions[$index]) ? $descriptions[$index] : '';
+                
+                // Create new daybook entry
+                $daybook = new Daybook();
+                $daybook->batch_id = $newBatchId;
+                $daybook->transaction_date = $date;
+                $daybook->amount = $amount;
+                $daybook->status = ($type == 'credit') ? 0 : 1;
+                $daybook->type = 'transaction';
+                $daybook->approval_status = $approvalStatus;
+                $daybook->description = $description . ' - ' . $type . ' from ' . $accountType;
+                
+                if ($type == 'debit') {
+                    $daybook->debit_type = $accountType;
+                    $daybook->debit_id = $accountIdNum;
+                } else {
+                    $daybook->credit_type = $accountType;
+                    $daybook->credit_id = $accountIdNum;
+                }
+                
+                $daybook->save();
+                
+                // Update balance and create transaction only if approved
+                if ($approvalStatus == 'approved') {
+                    if ($type == 'debit') {
+                        $this->processDebit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
+                    } elseif ($type == 'credit') {
+                        $this->processCredit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
+                    }
+                }
+                
+                $entriesSaved++;
+            }
+            
+            if ($entriesSaved > 0) {
+                DB::commit();
+                $message = $entriesSaved . ' entry(s) updated successfully! (Batch: ' . $newBatchId . ')';
+                if ($approvalStatus == 'pending') {
+                    $message .= ' Waiting for admin approval.';
+                }
+                return redirect()->route('general-transactions.index')
+                    ->with('success', $message);
             } else {
-                $daybook->credit_type = $accountType;
-                $daybook->credit_id = $accountIdNum;
+                DB::rollBack();
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'No valid entries found. Please add amount.');
             }
             
-            $daybook->save();
-            
-            // Update balance and create transaction
-            if ($type == 'debit') {
-                $this->processDebit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
-            } elseif ($type == 'credit') {
-                $this->processCredit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
-            }
-            
-            $entriesSaved++;
-        }
-        
-        if ($entriesSaved > 0) {
-            DB::commit();
-            return redirect()->route('general-transactions.index')
-                ->with('success', $entriesSaved . ' entry(s) updated successfully! (Batch: ' . $newBatchId . ')');
-        } else {
+        } catch (\Throwable $th) {
             DB::rollBack();
+            \Log::error('Update error: ' . $th->getMessage());
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'No valid entries found. Please add amount.');
+                ->with('error', 'Error: ' . $th->getMessage());
         }
-        
-    } catch (\Throwable $th) {
-        DB::rollBack();
-        \Log::error('Update error: ' . $th->getMessage());
-        return redirect()->back()
-            ->withInput()
-            ->with('error', 'Error: ' . $th->getMessage());
     }
-}
 
     // Helper methods for processing transactions
     private function processDebit($accountType, $accountIdNum, $amount, $date, $description, $daybook)
@@ -571,7 +597,7 @@ public function update(Request $request, $id)
     }
 
     /**
-     * STORE GENERAL ENTRY - UPDATED WITH BATCH_ID
+     * STORE GENERAL ENTRY - UPDATED WITH ROLE-BASED APPROVAL
      */
     public function storeGeneralEntry(Request $request)
     {
@@ -590,11 +616,12 @@ public function update(Request $request, $id)
             $creditAmounts = $request->input('credit_amounts', []);
             $descriptions = $request->input('descriptions', []);
             
-            \Log::info('Date: ' . $date);
-            \Log::info('Batch ID: ' . $batchId);
-            \Log::info('Account IDs: ' . json_encode($accountIds));
-            \Log::info('Debit Amounts: ' . json_encode($debitAmounts));
-            \Log::info('Credit Amounts: ' . json_encode($creditAmounts));
+            // Check if user is admin
+            $isAdmin = auth()->user()->role == 'admin';
+            $approvalStatus = $isAdmin ? 'approved' : 'pending';
+            
+            \Log::info('User role: ' . auth()->user()->role);
+            \Log::info('Approval status set to: ' . $approvalStatus);
             
             $entriesSaved = 0;
             
@@ -634,12 +661,12 @@ public function update(Request $request, $id)
                 \Log::info("Index {$index}: Saving: Type={$type}, Account={$accountType}, ID={$accountIdNum}, Amount={$amount}");
                 
                 $daybook = new Daybook();
-                $daybook->batch_id = $batchId;  // <-- ADDED: Group all entries with same batch_id
+                $daybook->batch_id = $batchId;
                 $daybook->transaction_date = $date;
                 $daybook->amount = $amount;
-                $daybook->status = 1;
+                $daybook->status = ($type == 'credit') ? 0 : 1; // 0=Credit, 1=Debit
                 $daybook->type = 'transaction';
-                $daybook->approval_status = 'approved';
+                $daybook->approval_status = $approvalStatus;
                 $daybook->description = $description . ' - ' . $type . ' from ' . $accountType;
                 
                 if ($type == 'debit') {
@@ -653,216 +680,12 @@ public function update(Request $request, $id)
                 $daybook->save();
                 \Log::info("Index {$index}: Daybook saved with ID: " . $daybook->id . " (Batch: {$batchId})");
                 
-                if ($type == 'debit') {
-                    if ($accountType == 'customer') {
-                        \Log::info("Index {$index}: Processing CUSTOMER debit");
-                        $customer = Customer::find($accountIdNum);
-                        if ($customer) {
-                            $oldBalance = $customer->balance;
-                            $customer->balance = $oldBalance - $amount;
-                            $customer->save();
-                            \Log::info("Index {$index}: Customer balance updated: {$oldBalance} -> {$customer->balance}");
-                            
-                            $transaction = new CustomerTransaction();
-                            $transaction->uuid = Str::uuid();
-                            $transaction->customer_id = $customer->id;
-                            $transaction->transaction_date = $date;
-                            $transaction->amount = $amount;
-                            $transaction->type = 'debit';
-                            $transaction->approval_status = 'approved';
-                            $transaction->description = $description;
-                            $transaction->current_balance = $customer->balance;
-                            $transaction->save();
-                            
-                            $daybook->customer_transaction_id = $transaction->id;
-                            $daybook->save();
-                            
-                            \Log::info("Index {$index}: CustomerTransaction saved with ID: " . $transaction->id);
-                        } else {
-                            throw new \Exception("Customer NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } elseif ($accountType == 'vendor') {
-                        \Log::info("Index {$index}: Processing VENDOR debit");
-                        $vendor = Vendor::find($accountIdNum);
-                        if ($vendor) {
-                            $oldBalance = $vendor->balance;
-                            $newBalance = $oldBalance - $amount;
-                            $vendor->balance = $newBalance;
-                            $vendor->save();
-                            \Log::info("Index {$index}: Vendor Balance Updated: {$oldBalance} -> {$newBalance}");
-                            
-                            $transaction = new VendorTransaction();
-                            $transaction->uuid = Str::uuid();
-                            $transaction->vendor_id = $vendor->id;
-                            $transaction->date = $date;
-                            $transaction->amount = (string)$amount;
-                            $transaction->transaction_type = 'debit';
-                            $transaction->type = 'balance';
-                            $transaction->approval_status = 'approved';
-                            $transaction->description = $description;
-                            $transaction->current_balance = (string)$newBalance;
-                            $transaction->save();
-                            
-                            $daybook->vendor_transaction_id = $transaction->id;
-                            $daybook->save();
-                            
-                            \Log::info("Index {$index}: VendorTransaction saved with ID: " . $transaction->id);
-                        } else {
-                            throw new \Exception("Vendor NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } elseif ($accountType == 'bank') {
-                        \Log::info("Index {$index}: Processing BANK debit");
-                        $bank = Bank::find($accountIdNum);
-                        if ($bank) {
-                            $oldBalance = $bank->account_balance;
-                            $bank->account_balance = $oldBalance - $amount;
-                            $bank->save();
-                            
-                            $transaction = new BankTransaction();
-                            $transaction->bank_id = $bank->id;
-                            $transaction->amount = $amount;
-                            $transaction->balance = $bank->account_balance;
-                            $transaction->transaction_type = 'debit';
-                            $transaction->description = $description;
-                            $transaction->save();
-                            \Log::info("Index {$index}: BankTransaction saved with ID: " . $transaction->id);
-                        } else {
-                            throw new \Exception("Bank NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } elseif ($accountType == 'cash') {
-                        \Log::info("Index {$index}: Processing CASH debit");
-                        $cash = Cash::find($accountIdNum);
-                        if ($cash) {
-                            $oldBalance = $cash->balance;
-                            $cash->balance = $oldBalance - $amount;
-                            $cash->save();
-                            
-                            $transaction = new CashTransaction();
-                            $transaction->cash_id = $cash->id;
-                            $transaction->amount = $amount;
-                            $transaction->balance = $cash->balance;
-                            $transaction->transaction_type = 'debit';
-                            $transaction->description = $description;
-                            $transaction->save();
-                            \Log::info("Index {$index}: CashTransaction saved with ID: " . $transaction->id);
-                        } else {
-                            throw new \Exception("Cash NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } elseif ($accountType == 'expense') {
-                        \Log::info("Index {$index}: Processing EXPENSE (Debit means recording an expense)");
-                        $expense = \App\Models\Expense::find($accountIdNum);
-                        if ($expense) {
-                            \Log::info("Index {$index}: Expense recorded: " . $expense->name . " - Amount: " . $amount);
-                        } else {
-                            throw new \Exception("Expense NOT FOUND with ID: " . $accountIdNum);
-                        }
+                // Process transactions only if approved
+                if ($approvalStatus == 'approved') {
+                    if ($type == 'debit') {
+                        $this->processDebit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
                     } else {
-                        \Log::warning("Index {$index}: Unknown account type: {$accountType}");
-                    }
-                } elseif ($type == 'credit') {
-                    if ($accountType == 'customer') {
-                        \Log::info("Index {$index}: Processing CUSTOMER credit");
-                        $customer = Customer::find($accountIdNum);
-                        if ($customer) {
-                            $oldBalance = $customer->balance;
-                            $customer->balance = $oldBalance + $amount;
-                            $customer->save();
-                            
-                            $transaction = new CustomerTransaction();
-                            $transaction->uuid = Str::uuid();
-                            $transaction->customer_id = $customer->id;
-                            $transaction->transaction_date = $date;
-                            $transaction->amount = $amount;
-                            $transaction->type = 'credit';
-                            $transaction->approval_status = 'approved';
-                            $transaction->description = $description;
-                            $transaction->current_balance = $customer->balance;
-                            $transaction->save();
-                            
-                            $daybook->customer_transaction_id = $transaction->id;
-                            $daybook->save();
-                            
-                            \Log::info("Index {$index}: CustomerTransaction saved with ID: " . $transaction->id);
-                        } else {
-                            throw new \Exception("Customer NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } elseif ($accountType == 'vendor') {
-                        \Log::info("Index {$index}: Processing VENDOR credit");
-                        $vendor = Vendor::find($accountIdNum);
-                        if ($vendor) {
-                            $oldBalance = $vendor->balance;
-                            $newBalance = $oldBalance + $amount;
-                            $vendor->balance = $newBalance;
-                            $vendor->save();
-                            \Log::info("Index {$index}: Vendor Balance Updated: {$oldBalance} -> {$newBalance}");
-                            
-                            $transaction = new VendorTransaction();
-                            $transaction->uuid = Str::uuid();
-                            $transaction->vendor_id = $vendor->id;
-                            $transaction->date = $date;
-                            $transaction->amount = (string)$amount;
-                            $transaction->transaction_type = 'credit';
-                            $transaction->type = 'balance';
-                            $transaction->approval_status = 'approved';
-                            $transaction->description = $description;
-                            $transaction->current_balance = (string)$newBalance;
-                            $transaction->save();
-                            
-                            $daybook->vendor_transaction_id = $transaction->id;
-                            $daybook->save();
-                            
-                            \Log::info("Index {$index}: VendorTransaction saved with ID: " . $transaction->id);
-                        } else {
-                            throw new \Exception("Vendor NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } elseif ($accountType == 'bank') {
-                        \Log::info("Index {$index}: Processing BANK credit");
-                        $bank = Bank::find($accountIdNum);
-                        if ($bank) {
-                            $oldBalance = $bank->account_balance;
-                            $bank->account_balance = $oldBalance + $amount;
-                            $bank->save();
-                            
-                            $transaction = new BankTransaction();
-                            $transaction->bank_id = $bank->id;
-                            $transaction->amount = $amount;
-                            $transaction->balance = $bank->account_balance;
-                            $transaction->transaction_type = 'credit';
-                            $transaction->description = $description;
-                            $transaction->save();
-                            \Log::info("Index {$index}: BankTransaction saved with ID: " . $transaction->id);
-                        } else {
-                            throw new \Exception("Bank NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } elseif ($accountType == 'cash') {
-                        \Log::info("Index {$index}: Processing CASH credit");
-                        $cash = Cash::find($accountIdNum);
-                        if ($cash) {
-                            $oldBalance = $cash->balance;
-                            $cash->balance = $oldBalance + $amount;
-                            $cash->save();
-                            
-                            $transaction = new CashTransaction();
-                            $transaction->cash_id = $cash->id;
-                            $transaction->amount = $amount;
-                            $transaction->balance = $cash->balance;
-                            $transaction->transaction_type = 'credit';
-                            $transaction->description = $description;
-                            $transaction->save();
-                            \Log::info("Index {$index}: CashTransaction saved with ID: " . $transaction->id);
-                        } else {
-                            throw new \Exception("Cash NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } elseif ($accountType == 'expense') {
-                        \Log::info("Index {$index}: Processing EXPENSE (Credit means reducing expense or refund)");
-                        $expense = \App\Models\Expense::find($accountIdNum);
-                        if ($expense) {
-                            \Log::info("Index {$index}: Expense credit recorded: " . $expense->name . " - Amount: " . $amount);
-                        } else {
-                            throw new \Exception("Expense NOT FOUND with ID: " . $accountIdNum);
-                        }
-                    } else {
-                        \Log::warning("Index {$index}: Unknown account type: {$accountType}");
+                        $this->processCredit($accountType, $accountIdNum, $amount, $date, $description, $daybook);
                     }
                 }
                 
@@ -873,8 +696,12 @@ public function update(Request $request, $id)
             
             if ($entriesSaved > 0) {
                 DB::commit();
+                $message = $entriesSaved . ' entry(s) created successfully! (Batch: ' . $batchId . ')';
+                if ($approvalStatus == 'pending') {
+                    $message .= ' Waiting for admin approval.';
+                }
                 return redirect()->route('general-transactions.index')
-                    ->with('success', $entriesSaved . ' entry(s) created successfully! (Batch: ' . $batchId . ')');
+                    ->with('success', $message);
             } else {
                 DB::rollBack();
                 return redirect()->back()
@@ -892,13 +719,179 @@ public function update(Request $request, $id)
         }
     }
 
+    /**
+     * Approve a pending entry
+     */
+    public function approve($id)
+    {
+        try {
+            DB::beginTransaction();
+            
+            $entry = Daybook::findOrFail($id);
+            
+            // Check if entry is already approved
+            if ($entry->approval_status == 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Entry is already approved'
+                ], 400);
+            }
+            
+            // Update approval status
+            $entry->approval_status = 'approved';
+            $entry->save();
+            
+            // If this is a batch entry, approve all entries in the same batch
+            if ($entry->batch_id) {
+                Daybook::where('batch_id', $entry->batch_id)
+                    ->where('approval_status', 'pending')
+                    ->update(['approval_status' => 'approved']);
+                    
+                // Get all entries in the batch to process their transactions
+                $batchEntries = Daybook::where('batch_id', $entry->batch_id)->get();
+                foreach ($batchEntries as $batchEntry) {
+                    // Process transactions for each entry if they haven't been processed yet
+                    if (!$batchEntry->customer_transaction_id && !$batchEntry->vendor_transaction_id) {
+                        if ($batchEntry->debit_type && $batchEntry->debit_id) {
+                            $this->processDebit(
+                                $batchEntry->debit_type, 
+                                $batchEntry->debit_id, 
+                                $batchEntry->amount, 
+                                $batchEntry->transaction_date, 
+                                $batchEntry->description, 
+                                $batchEntry
+                            );
+                        } elseif ($batchEntry->credit_type && $batchEntry->credit_id) {
+                            $this->processCredit(
+                                $batchEntry->credit_type, 
+                                $batchEntry->credit_id, 
+                                $batchEntry->amount, 
+                                $batchEntry->transaction_date, 
+                                $batchEntry->description, 
+                                $batchEntry
+                            );
+                        }
+                    }
+                }
+            } else {
+                // Single entry - process transactions if not already processed
+                if (!$entry->customer_transaction_id && !$entry->vendor_transaction_id) {
+                    if ($entry->debit_type && $entry->debit_id) {
+                        $this->processDebit(
+                            $entry->debit_type, 
+                            $entry->debit_id, 
+                            $entry->amount, 
+                            $entry->transaction_date, 
+                            $entry->description, 
+                            $entry
+                        );
+                    } elseif ($entry->credit_type && $entry->credit_id) {
+                        $this->processCredit(
+                            $entry->credit_type, 
+                            $entry->credit_id, 
+                            $entry->amount, 
+                            $entry->transaction_date, 
+                            $entry->description, 
+                            $entry
+                        );
+                    }
+                }
+            }
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Entry approved successfully!'
+            ]);
+            
+        } catch (\Throwable $th) {
+            DB::rollBack();
+            \Log::error('Approve entry error: ' . $th->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to approve entry: ' . $th->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete an entry
+     */
+    public function delete($id)
+    {
+        try {
+            DB::beginTransaction();
+            
+            $entry = Daybook::findOrFail($id);
+            
+            // If this is a batch entry, delete all entries in the batch
+            if ($entry->batch_id) {
+                $batchEntries = Daybook::where('batch_id', $entry->batch_id)->get();
+                
+                foreach ($batchEntries as $batchEntry) {
+                    // Reverse transactions
+                    if ($batchEntry->debit_type && $batchEntry->debit_id) {
+                        $this->reverseTransaction($batchEntry->debit_type, $batchEntry->debit_id, $batchEntry->amount, 'debit');
+                    }
+                    if ($batchEntry->credit_type && $batchEntry->credit_id) {
+                        $this->reverseTransaction($batchEntry->credit_type, $batchEntry->credit_id, $batchEntry->amount, 'credit');
+                    }
+                    
+                    // Delete related transactions
+                    if ($batchEntry->customer_transaction_id) {
+                        CustomerTransaction::find($batchEntry->customer_transaction_id)?->delete();
+                    }
+                    if ($batchEntry->vendor_transaction_id) {
+                        VendorTransaction::find($batchEntry->vendor_transaction_id)?->delete();
+                    }
+                }
+                
+                // Delete all entries in the batch
+                Daybook::where('batch_id', $entry->batch_id)->delete();
+            } else {
+                // Single entry
+                if ($entry->debit_type && $entry->debit_id) {
+                    $this->reverseTransaction($entry->debit_type, $entry->debit_id, $entry->amount, 'debit');
+                }
+                if ($entry->credit_type && $entry->credit_id) {
+                    $this->reverseTransaction($entry->credit_type, $entry->credit_id, $entry->amount, 'credit');
+                }
+                
+                if ($entry->customer_transaction_id) {
+                    CustomerTransaction::find($entry->customer_transaction_id)?->delete();
+                }
+                if ($entry->vendor_transaction_id) {
+                    VendorTransaction::find($entry->vendor_transaction_id)?->delete();
+                }
+                
+                $entry->delete();
+            }
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Entry deleted successfully!'
+            ]);
+            
+        } catch (\Throwable $th) {
+            DB::rollBack();
+            \Log::error('Delete entry error: ' . $th->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete entry: ' . $th->getMessage()
+            ], 500);
+        }
+    }
+
     public function generalEntriesList(Request $request)
     {
         return $this->index();
     }
 
     /**
-     * Get entry as JSON (for AJAX) - Keep this for any AJAX needs
+     * Get entry as JSON (for AJAX)
      */
     public function getEntry($id)
     {
@@ -924,14 +917,15 @@ public function update(Request $request, $id)
         }
     }
 
+    // These methods are kept for backward compatibility
     public function approveEntry($id)
     {
-        return response()->json(['success' => true]);
+        return $this->approve($id);
     }
 
     public function deleteEntry($id)
     {
-        return response()->json(['success' => true]);
+        return $this->delete($id);
     }
 
     public function getAccounts(Request $request)

@@ -39,6 +39,7 @@
                             <tr>
                                 <th>#</th>
                                 <th>Balance</th>
+                                <th>Type</th>
                                 <th>Created Date</th>
                                 <th>Actions</th>
                             </tr>
@@ -53,6 +54,11 @@
                                                 {{ number_format($cash->balance, 2) }}
                                             </span>
                                         </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-label-info me-1">
+                                            <i class="bx bx-arrow-up me-1"></i> CR (Credit)
+                                        </span>
                                     </td>
                                     <td>
                                         <div class="d-flex flex-column">
@@ -119,18 +125,25 @@
                             <label for="balance" class="form-label fw-semibold">Balance <span class="text-danger">*</span></label>
                             <input type="number" min="0" step="0.01" class="form-control" id="balance"
                                 name="balance" placeholder="Enter cash balance" required>
-                            <small class="text-muted">Enter the initial cash balance amount.</small>
+                            <small class="text-muted">Enter the initial cash balance amount. (Credit by default)</small>
                         </div>
                         <div class="mb-3">
                             <label for="cash_date" class="form-label fw-semibold">Date <span class="text-muted">(Optional)</span></label>
                             <input type="date" class="form-control" id="cash_date" name="cash_date" value="{{ date('Y-m-d') }}">
                             <small class="text-muted">Leave empty to use current date.</small>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Transaction Type</label>
+                            <div class="alert alert-info mb-0">
+                                <i class="bx bx-info-circle me-1"></i> 
+                                <strong>Credit (CR)</strong> - Cash will be added to your balance
+                            </div>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary-custom" id="addCashSubmit">
-                            <i class="bx bx-check me-1"></i> Add Cash
+                        <button type="button" class="btn btn-primary-custom" id="addCashSubmit">
+                            <i class="bx bx-check me-1"></i> Add Cash (CR)
                         </button>
                     </div>
                 </div>
@@ -166,11 +179,18 @@
                             <label for="description" class="form-label fw-semibold">Description</label>
                             <textarea class="form-control" id="description" name="description" rows="2" placeholder="Enter reason for deduction"></textarea>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Transaction Type</label>
+                            <div class="alert alert-danger mb-0">
+                                <i class="bx bx-info-circle me-1"></i> 
+                                <strong>Debit (DR)</strong> - Cash will be deducted from your balance
+                            </div>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-danger-custom" id="deductCashSubmit">
-                            <i class="bx bx-check me-1"></i> Deduct Cash
+                        <button type="button" class="btn btn-danger-custom" id="deductCashSubmit">
+                            <i class="bx bx-check me-1"></i> Deduct Cash (DR)
                         </button>
                     </div>
                 </div>
@@ -393,7 +413,7 @@ $(document).ready(function() {
         let today = new Date().toISOString().split('T')[0];
         form.find('input[name="cash_date"]').val(today);
         let submitBtn = $('#addCashSubmit');
-        submitBtn.html('<i class="bx bx-check me-1"></i> Add Cash');
+        submitBtn.html('<i class="bx bx-check me-1"></i> Add Cash (CR)');
         submitBtn.prop('disabled', false);
         submitBtn.data('submitting', false);
         $('.is-invalid').removeClass('is-invalid');
@@ -406,7 +426,7 @@ $(document).ready(function() {
         let today = new Date().toISOString().split('T')[0];
         form.find('input[name="cash_date"]').val(today);
         let submitBtn = $('#deductCashSubmit');
-        submitBtn.html('<i class="bx bx-check me-1"></i> Deduct Cash');
+        submitBtn.html('<i class="bx bx-check me-1"></i> Deduct Cash (DR)');
         submitBtn.prop('disabled', false);
         submitBtn.data('submitting', false);
         $('.is-invalid').removeClass('is-invalid');
